@@ -2,13 +2,14 @@ import { type FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
 import { Pool } from 'pg';
-import { signupSchema, verifySchema, resendSchema, loginSchema, createTeamSchema, renameTeamSchema, createEpicSchema, editEpicSchema } from '@kickit/shared';
+import { signupSchema, verifySchema, resendSchema, loginSchema, createTeamSchema, renameTeamSchema, createEpicSchema, editEpicSchema, createTicketSchema, editTicketSchema } from '@kickit/shared';
 import { signup, verifyToken, resendVerification, verifyPassword } from './services/auth.ts';
 import { createSession, deleteSession } from './services/session.ts';
 import { requireSession } from './plugins/session.ts';
 import { users, teams, epics, tickets } from './db/schema.ts';
 import { listTeams, createTeam, renameTeam, checkDeleteTeam } from './services/team.ts';
 import { listEpics, createEpic, editEpic, checkDeleteEpic, findTeamById, listTeams as listEpicTeams } from './services/epic.ts';
+import { listTickets, createTicket, getTicket, editTicket, deleteTicket } from './services/ticket.ts';
 
 export default async function routes(app: FastifyInstance) {
   app.get('/health', async () => {
@@ -494,6 +495,212 @@ export default async function routes(app: FastifyInstance) {
 
       // Delete the epic
       await db.delete(epics).where(eq(epics.id, epicId));
+      return reply.code(204).send();
+    } finally {
+      await pool.end();
+    }
+  });
+
+  // ---- Ticket routes ----
+
+  app.get('/tickets', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const searchParams = new URL(request.url, `http://${request.headers.host}`).searchParams;
+    const teamId = searchParams.get('teamId');
+
+    if (!teamId) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'teamId query parameter is required' } });
+    }
+
+    const isValid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    if (!isValid) {
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid teamId format' } });
+    }
+
+    // Verify team exists
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      const team = await findTeamById(db, teamId);
+      if (!team) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Unknown teamId' } });
+      }
+
+      const tickets = await listTickets(db, teamId);
+      return reply.code(200).send(tickets);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  app.post('/tickets', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const parseResult = createTicketSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const details = parseResult.error.errors.map((e) => ({
+        field: e.path.filter((p): p is string => typeof p === 'string').join('.'),
+        message: e.message,
+      }));
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details } });
+    }
+
+    const { teamId, type, state, epicId, title, body } = parseResult.data;
+    const normalizedState = state ?? 'new';
+
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      // Validate team exists
+      const team = await findTeamById(db, teamId);
+      if (!team) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Unknown teamId' } });
+      }
+
+      // Validate epic if present must belong to team
+      if (epicId !== null && epicId !== undefined) {
+        const epicTeam = await db.select({ teamId: epics.teamId }).from(epics).where(eq(epics.id, epicId)).limit(1).then((r) => r[0]);
+        if (!epicTeam || epicTeam.teamId !== teamId) {
+          return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Epic does not belong to the specified team' } });
+        }
+      }
+
+      const normalizedEpicId = epicId ?? null;
+      const ticket = await createTicket(db, pool, teamId, type, normalizedState, normalizedEpicId, title, body, request.user.id);
+      return reply.code(201).send(ticket);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  app.get('/tickets/:id', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const ticketId = (request.params as Record<string, string>).id;
+
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      const result = await getTicket(db, ticketId);
+
+      if (!result.ticket) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Ticket not found' } });
+      }
+
+      return reply.code(200).send({ ticket: result.ticket, comments: result.comments });
+    } finally {
+      await pool.end();
+    }
+  });
+
+  app.patch('/tickets/:id', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const ticketId = (request.params as Record<string, string>).id;
+
+    const parseResult = editTicketSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const details = parseResult.error.errors.map((e) => ({
+        field: e.path.filter((p): p is string => typeof p === 'string').join('.'),
+        message: e.message,
+      }));
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details } });
+    }
+
+    const { type: newType, teamId: newTeamId, epicId: newEpicId, title: newTitle, body: newBody, state: newState } = parseResult.data;
+
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      // Verify ticket exists
+      const existing = await db.select({ id: tickets.id, teamId: tickets.teamId }).from(tickets).where(eq(tickets.id, ticketId)).limit(1).then((r) => r[0]);
+      if (!existing) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Ticket not found' } });
+      }
+
+      // Validate epic if present: must belong to the (new or current) team
+      if (newEpicId !== null && newEpicId !== undefined) {
+        const targetTeamId = newTeamId ?? existing.teamId;
+        const epicTeam = await db.select({ teamId: epics.teamId }).from(epics).where(eq(epics.id, newEpicId)).limit(1).then((r) => r[0]);
+        if (!epicTeam || epicTeam.teamId !== targetTeamId) {
+          return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Epic does not belong to the specified team' } });
+        }
+      }
+
+      // Validate new team exists if provided
+      if (newTeamId !== undefined) {
+        const newTeam = await findTeamById(db, newTeamId);
+        if (!newTeam) {
+          return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Unknown teamId' } });
+        }
+      }
+
+      // Team change rules: if team changes and epicId not supplied, auto-null epic
+      const effectiveEpicId = (newTeamId !== undefined && newTeamId !== existing.teamId && newEpicId === undefined) ? null : newEpicId;
+
+      const result = await editTicket(db, pool, ticketId, newType, newTeamId, effectiveEpicId, newTitle, newBody, newState);
+
+      if (result === null) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Ticket not found' } });
+      }
+
+      return reply.code(200).send(result);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  app.delete('/tickets/:id', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const ticketId = (request.params as Record<string, string>).id;
+
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      // Verify ticket exists
+      const existing = await db.select({ id: tickets.id }).from(tickets).where(eq(tickets.id, ticketId)).limit(1).then((r) => r[0]);
+      if (!existing) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Ticket not found' } });
+      }
+
+      await deleteTicket(db, ticketId);
       return reply.code(204).send();
     } finally {
       await pool.end();

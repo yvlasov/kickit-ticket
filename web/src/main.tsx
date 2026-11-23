@@ -9,6 +9,9 @@ import Verify from './pages/Verify';
 import Login from './pages/Login';
 import Home from './pages/Teams';
 import Epics from './pages/Epics';
+import Tickets from './pages/Tickets';
+import TicketNew from './pages/TicketNew';
+import TicketDetail from './pages/TicketDetail';
 import AppShell from './components/AppShell';
 import { queryClient, handleUnauthorized } from './api';
 
@@ -48,6 +51,30 @@ function App() {
         element={
           <ProtectedRoute>
             <Epics />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tickets/new"
+        element={
+          <ProtectedRoute>
+            <TicketNew />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tickets"
+        element={
+          <ProtectedRoute>
+            <Tickets />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tickets/:id"
+        element={
+          <ProtectedRoute>
+            <TicketDetail />
           </ProtectedRoute>
         }
       />
