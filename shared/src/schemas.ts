@@ -86,3 +86,9 @@ export type CreateEpicInput = z.infer<typeof createEpicSchema>;
 export type EditEpicInput = z.infer<typeof editEpicSchema>;
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
 export type EditTicketInput = z.infer<typeof editTicketSchema>;
+
+export const addCommentSchema = z.object({
+  body: z.string().transform((s) => s.trim()).refine((s) => s.length >= 1, { message: 'Comment body is required' }),
+});
+
+export type AddCommentInput = z.infer<typeof addCommentSchema>;
