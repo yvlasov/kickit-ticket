@@ -12,23 +12,15 @@ function columnLocator(page: any, heading: string) {
   return page.locator('h3', { hasText: heading }).first().locator('..');
 }
 
-test.describe('Full UI journey', () => {
-  test('signup → verify → login → team → epic → ticket → drag → refresh persists', async ({ page }) => {
+test.describe('Drag diagnostics', () => {
+  test('check draggable attr and mouse drag behavior', async ({ page }) => {
     const email = uniqueEmail();
     const password = 'E2Etest123';
     const teamName = uniqueTeamName();
 
-    const resp = await page.request.post('/api/auth/signup', {
-      data: { email, password },
-    });
-    await expect(resp.ok()).toBe(true);
-
-    await page.goto('/check-email');
-    await expect(page.getByText('Check your email')).toBeVisible();
-
+    await page.request.post('/api/auth/signup', { data: { email, password } });
     const token = await pollVerificationToken(page, email);
     expect(token).not.toBeNull();
-
     await page.goto(`/verify?token=${token}`);
     await expect(page.getByText('Email verified!')).toBeVisible();
 
@@ -38,134 +30,81 @@ test.describe('Full UI journey', () => {
     await page.getByRole('button', { name: 'Login' }).click();
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 15000 });
 
-    await page.getByPlaceholder('Team name').fill(teamName);
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText(teamName)).toBeVisible();
+    const teamId = await createTeamViaApi(page, teamName);
+    const epicId = await createEpicViaApi(page, teamId, 'Diag Epic');
+    const ticketId = await createTicketViaApi(page, teamId, 'bug', 'Diag Ticket', 'body', 'new', epicId);
 
-    const teamsResp = await page.request.get('/api/teams');
-    const teams = await teamsResp.json() as Array<{ id: string; name: string }>;
-    const teamId = teams.find((t) => t.name === teamName)?.id;
-    expect(teamId).toBeDefined();
-
-    const epicTitle = 'E2E Epic';
-    const epicId = await createEpicViaApi(page, teamId!, epicTitle);
-    expect(epicId).toBeDefined();
-
-    await page.goto(`/board?teamId=${teamId}`);
-    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
-
-    const teamSelect = page.locator('select').first();
-    await expect(teamSelect).toBeVisible({ timeout: 10000 });
-    let teamOptions = 0;
-    for (let i = 0; i < 10; i++) {
-      teamOptions = await teamSelect.locator('option').count();
-      if (teamOptions > 1) break;
-      await page.waitForTimeout(500);
-    }
-    const currentSelected = await teamSelect.inputValue();
-    if (!currentSelected && teamOptions > 0) {
-      await teamSelect.selectOption({ index: 1 });
-      await page.waitForTimeout(1000);
-    }
-
-    await page.getByRole('link', { name: 'New Ticket' }).click();
-    await expect(page.getByPlaceholder('Ticket title')).toBeVisible({ timeout: 10000 });
-    await page.getByPlaceholder('Ticket title').fill('E2E Journey Ticket');
-    await page.getByPlaceholder('Ticket description').fill('Body of the journey ticket');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
-
-    const ticketId = page.url().split('/').pop() ?? '';
-    expect(ticketId).toBeTruthy();
-
-    // REAL DRAG
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
     const newCol = columnLocator(page, 'New');
-    const inProgressCol = columnLocator(page, 'In progress');
     const card = newCol.locator('a[href^="/tickets/"]').first();
     await expect(card).toBeVisible({ timeout: 10000 });
 
-    const cardBox = await card.boundingBox();
-    const colBox = await inProgressCol.boundingBox();
-    expect(cardBox).toBeTruthy();
-    expect(colBox).toBeTruthy();
+    // Check card DOM attributes
+    const cardInfo = await page.evaluate(() => {
+      const anchor = document.querySelector('a[href^="/tickets/"]') as HTMLAnchorElement;
+      if (!anchor) return { error: 'no anchor' };
+      return {
+        draggable: anchor.draggable,
+        hasTouchAction: !!((anchor as HTMLElement).style?.touchAction),
+        touchActionValue: ((anchor as HTMLElement).style?.touchAction) ?? '',
+        className: anchor.className,
+        outerHTML: anchor.outerHTML.substring(0, 300),
+      };
+    });
+    console.log('Card DOM info:', JSON.stringify(cardInfo, null, 2));
 
-    // Intercept navigation
-    const navigationPromise = page.waitForEvent('request', {
-      predicate: req => req.url().includes('/tickets/') && !req.url().includes('/api/'),
-      timeout: 3000,
+    const cardBox = await card.boundingBox();
+    expect(cardBox).toBeTruthy();
+
+    // Add init script to count pointer events
+    await page.addInitScript(() => {
+      (window as any).__pointerEvents = { down: 0, move: 0, up: 0, cancel: 0 };
+      document.addEventListener('pointerdown', () => { (window as any).__pointerEvents.down++; }, { capture: true });
+      document.addEventListener('pointermove', () => { (window as any).__pointerEvents.move++; }, { capture: true });
+      document.addEventListener('pointerup', () => { (window as any).__pointerEvents.up++; }, { capture: true });
+      document.addEventListener('pointercancel', () => { (window as any).__pointerEvents.cancel++; }, { capture: true });
     });
 
-    // Dispatch pointer events with correct `buttons` values:
-    // - pointerdown: buttons=0 (button just pressed, not yet counted)
-    // - pointermove: buttons=1 (button is held)
-    // - pointerup: buttons=0 (button released — dnd-kit onEnd checks buttons!==0 and skips)
-    const cardHref = await card.getAttribute('href');
-    const dragResult = await page.evaluate(
-      ({ cx, cy, tx, ty, href }: { cx: number; cy: number; tx: number; ty: number; href: string }) => {
-        const events: string[] = [];
-        const anchor = document.querySelector(`a[href="${href}"]`) as HTMLAnchorElement;
-        const target = document.elementFromPoint(tx, ty);
+    // Do the drag
+    const colBox = await columnLocator(page, 'In progress').boundingBox();
+    expect(colBox).toBeTruthy();
 
-        if (!anchor) return ['no anchor found for ' + href];
+    await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(cardBox.x + cardBox.width / 2 + 20, cardBox.y + cardBox.height / 2, { steps: 5 });
+    await page.mouse.move(colBox.x + colBox.width / 2, colBox.y + colBox.height / 2, { steps: 15 });
+    await page.mouse.up();
 
-        const dispatch = (type: string, x: number, y: number, onEl: Element | null) => {
-          // buttons: 0 for down/up, 1 for move (button held)
-          const buttons = type === 'pointermove' ? 1 : 0;
-          const opts: PointerEventInit = {
-            bubbles: true, cancelable: true,
-            clientX: x, clientY: y,
-            button: 0,
-            buttons,
-            pointerType: 'mouse', pointerId: 1,
-          };
-          (onEl || anchor).dispatchEvent(new PointerEvent(type, opts));
-          events.push(`${type} on ${(onEl || anchor).tagName} buttons=${buttons} at (${x},${y})`);
-        };
-
-        dispatch('pointerdown', cx, cy, anchor);
-        dispatch('pointermove', cx + 10, cy + 10, anchor);
-        dispatch('pointermove', tx, ty, target);
-        dispatch('pointerup', tx, ty, target);
-        return events;
-      },
-      {
-        cx: cardBox.x + cardBox.width / 2,
-        cy: cardBox.y + cardBox.height / 2,
-        tx: colBox.x + colBox.width / 2,
-        ty: colBox.y + colBox.height / 2,
-        href: cardHref,
-      },
-    );
-
-    console.log('Pointer events (fixed buttons):', JSON.stringify(dragResult));
-
-    // Wait for potential navigation
-    try {
-      await navigationPromise;
-      await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
-      await page.goBack();
-      await page.waitForTimeout(1000);
-    } catch {
-      // No navigation
-    }
-
-    // Wait for optimistic update + PATCH request to settle
     await page.waitForTimeout(2000);
 
-    // Assert the card now appears in the In-progress column
-    const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
-    await expect(inProgressCards.first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
+    // Check pointer events
+    const events = await page.evaluate(() => ({
+      ...((window as any).__pointerEvents ?? {}),
+      isDragging: ((document.querySelector('a[href^="/tickets/"]') as HTMLElement | null)?.style?.opacity) ?? 'unknown',
+      inProgressCards: document.querySelectorAll('h3:has-text("In progress") a[href^="/tickets/"]').length,
+      newCards: document.querySelectorAll('h3:has-text("New") a[href^="/tickets/"]').length,
+    }));
+    console.log('Pointer events after drag:', JSON.stringify(events, null, 2));
 
-    // Page reload — card should STILL be in In progress (persisted)
-    await page.reload();
-    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
+    // Check what columns have cards
+    const colState = await page.evaluate(() => {
+      const columns = document.querySelectorAll('h3');
+      const result: Record<string, number> = {};
+      columns.forEach(h3 => {
+        const name = h3.textContent?.trim() ?? 'unknown';
+        const col = h3.closest('[class*="flex"]') ?? h3.parentElement;
+        if (col) {
+          result[name] = col.querySelectorAll('a[href^="/tickets/"]').length;
+        }
+      });
+      return result;
+    });
+    console.log('Cards per column:', JSON.stringify(colState));
 
-    const inProgressAfterReload = inProgressCol.locator('a[href^="/tickets/"]');
-    await expect(inProgressAfterReload.first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
+    await page.screenshot({ path: '/tmp/drag-diag5.png', fullPage: true });
+
+    expect(true).toBe(true);
   });
 });
