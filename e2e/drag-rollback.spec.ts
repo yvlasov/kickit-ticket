@@ -71,7 +71,22 @@ test.describe('Drag rollback', () => {
     // Step 5: release
     await page.mouse.up();
 
-    // The <a> click navigated to ticket detail — go back to board
+    // Wait for optimistic update + PATCH to settle (onMutate → PATCH → onError)
+    await page.waitForTimeout(2000);
+
+    // (c) Error toast visible — check BEFORE navigating away (toast is Board component state)
+    await expect(page.getByText(/Could not move ticket/i)).toBeVisible({ timeout: 5000 });
+
+    // (a) Optimistic update was applied then reverted: card should be back in New column
+    // (b) Snap-back: card in original column
+    const newColCardsAfterRollback = newCol.locator('a[href^="/tickets/"]');
+    await expect(newColCardsAfterRollback.first()).toBeVisible();
+
+    // (d) Target column has no card
+    const inProgressCardsAfterRollback = inProgressCol.locator('a[href^="/tickets/"]');
+    expect(await inProgressCardsAfterRollback.count()).toBe(0);
+
+    // Now navigate away and back to verify clean state
     try {
       await page.goBack();
       await page.waitForTimeout(500);
@@ -79,24 +94,14 @@ test.describe('Drag rollback', () => {
       // Already on board
     }
 
-    // Re-navigate to board to ensure clean state
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
-    // (a) Optimistic update: card appears in target column (best-effort within 300ms)
-    // After rollback, the card should have snapped back to New column
-    // We assert that the toast is visible (error) and the card is in New (snapped back)
-
-    // (b) Card snapped back to original column
-    const newColCardsAfterRollback = newCol.locator('a[href^="/tickets/"]');
-    await expect(newColCardsAfterRollback.first()).toBeVisible();
-
-    // (c) Error toast visible
-    await expect(page.getByText(/Could not move ticket/i)).toBeVisible({ timeout: 5000 });
-
-    // (d) Target column has no card
-    const inProgressCardsAfterRollback = inProgressCol.locator('a[href^="/tickets/"]');
-    expect(await inProgressCardsAfterRollback.count()).toBe(0);
+    // Verify ticket is still in New column after reload
+    const newColAfterReload = newCol.locator('a[href^="/tickets/"]');
+    await expect(newColAfterReload.first()).toBeVisible();
+    const inProgressAfterReload = inProgressCol.locator('a[href^="/tickets/"]');
+    expect(await inProgressAfterReload.count()).toBe(0);
 
     await page.unroute(`**/api/tickets/${ticketId}`);
   });
