@@ -18,7 +18,7 @@ export function createTransport(): Transporter {
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
-    tls: SMTP_STARTTLS ? { rejectUnauthorized: false } : undefined,
+    requireTLS: SMTP_STARTTLS,
     auth,
   });
 }

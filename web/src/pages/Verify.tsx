@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 
 function apiFetch(path: string, options: RequestInit): Promise<Response> {
   return fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...options.headers } });

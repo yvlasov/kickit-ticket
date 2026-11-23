@@ -8,7 +8,7 @@ services:
     environment:
       DATABASE_URL: postgresql://kickit:kickit@postgres:5432/kickit
       PORT: "3000"
-      PUBLIC_BASE_URL: http://localhost:3000
+      PUBLIC_BASE_URL: http://localhost:${APP_PORT:-3000}
       SESSION_COOKIE_NAME: kickit_session
       SESSION_TTL_HOURS: "168"
       SMTP_HOST: mailpit

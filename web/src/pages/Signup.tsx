@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 function apiFetch(path: string, options: RequestInit): Promise<Response> {
   return fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...options.headers } });

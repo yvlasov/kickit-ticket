@@ -1,7 +1,7 @@
 import { hash, verify, Algorithm } from '@node-rs/argon2';
 import crypto from 'node:crypto';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { users, verificationTokens } from '../db/schema.ts';
 import { sendVerificationEmail } from './mailer.ts';
@@ -61,7 +61,7 @@ export async function signup(
   // Delete prior unused tokens for this user
   await db
     .delete(verificationTokens)
-    .where(eq(verificationTokens.userId, newUser.id));
+    .where(and(eq(verificationTokens.userId, newUser.id), isNull(verificationTokens.usedAt)));
 
   await db.insert(verificationTokens).values({
     userId: newUser.id,
@@ -118,7 +118,6 @@ export async function verifyToken(
 
 export async function resendVerification(
   db: ReturnType<typeof drizzle>,
-  pool: Pool,
   email: string,
 ): Promise<void> {
   const trimmedEmail = email.trim().toLowerCase();
@@ -136,25 +135,14 @@ export async function resendVerification(
 
   const userId = userRow.id;
 
-  const verified = await db
-    .select({ emailVerifiedAt: users.emailVerifiedAt })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1)
-    .then((rows) => rows[0]);
-
-  if (verified?.emailVerifiedAt !== null) {
-    return;
-  }
-
   const rawToken = generateToken();
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  // Delete prior unused tokens
+  // Delete prior unused tokens only
   await db
     .delete(verificationTokens)
-    .where(eq(verificationTokens.userId, userId));
+    .where(and(eq(verificationTokens.userId, userId), isNull(verificationTokens.usedAt)));
 
   await db.insert(verificationTokens).values({
     userId,

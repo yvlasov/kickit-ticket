@@ -101,7 +101,7 @@ export default async function routes(app: FastifyInstance) {
     const db = drizzle(pool);
 
     try {
-      await resendVerification(db, pool, parseResult.data.email);
+      await resendVerification(db, parseResult.data.email);
       return reply.code(202).send({ message: 'Verification email sent' });
     } finally {
       await pool.end();

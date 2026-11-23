@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import request from 'supertest';
 import { buildApp } from '../src/app';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -13,10 +14,33 @@ const migrationsFolder = join(__dirname, '../drizzle');
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://mailpit:8025';
 
-async function fetchMailpitMessage(): Promise<{ HTML?: string; Text?: string } | null> {
-  const resp = await fetch(`${MAILPIT_URL}/api/v1/message/latest`);
+async function fetchMailpitMessages(): Promise<Array<{ ID: string; To?: Array<{ Address?: string; Name?: string }> }>> {
+  const resp = await fetch(`${MAILPIT_URL}/api/v1/messages?latest=100`);
+  const data = await resp.json();
+  const arr = Array.isArray(data) ? data : (data.messages ?? []);
+  return arr;
+}
+
+async function fetchMailpitMessageById(id: string): Promise<{ HTML?: string; Text?: string } | null> {
+  const resp = await fetch(`${MAILPIT_URL}/api/v1/message/${id}`);
   const data = await resp.json();
   return { HTML: data.HTML, Text: data.Text };
+}
+
+async function fetchMailpitMessagesFor(email: string): Promise<Array<{ HTML?: string; Text?: string }>> {
+  const msgs = await fetchMailpitMessages();
+  const matching = msgs.filter((m) => m.To?.some((t) => (t.Address ?? t.Name ?? '').toLowerCase() === email.toLowerCase()));
+  const results: Array<{ HTML?: string; Text?: string }> = [];
+  for (const m of matching) {
+    const full = await fetchMailpitMessageById(m.ID);
+    if (full) results.push(full);
+  }
+  return results;
+}
+
+async function fetchLatestMailpitMessageFor(email: string): Promise<{ HTML?: string; Text?: string } | null> {
+  const msgs = await fetchMailpitMessagesFor(email);
+  return msgs[0] ?? null;
 }
 
 function extractTokenFromHtml(html: string): string | null {
@@ -25,16 +49,11 @@ function extractTokenFromHtml(html: string): string | null {
   return new URL(match[0]).searchParams.get('token');
 }
 
-async function jsonInject(app: Awaited<ReturnType<typeof buildApp>>, method: string, url: string, body?: Record<string, unknown>) {
-  const res = await app.inject({
-    method,
-    url,
-    payload: body,
-    headers: { 'Content-Type': 'application/json' },
-  });
+async function apiRequest(app: Awaited<ReturnType<typeof buildApp>>, method: string, url: string, body?: Record<string, unknown>) {
+  const res = await ((request(app.server) as any)[method.toLowerCase()](url).send(body) as Promise<{ statusCode: number; body: any }>);
   return {
     statusCode: res.statusCode,
-    body: JSON.parse(res.body),
+    body: res.body,
   };
 }
 
@@ -67,7 +86,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
 
   // Test 1: signup 201; password_hash in DB starts with $argon2id$
   it('POST /api/auth/signup returns 201 and hashes password with Argon2id', async () => {
-    const res = await jsonInject(app, 'POST', '/api/auth/signup', {
+    const res = await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'signup1@example.com',
       password: 'password123',
     });
@@ -84,7 +103,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
 
   // Test 2: password < 8 → 400
   it('POST /api/auth/signup rejects password < 8 with 400', async () => {
-    const res = await jsonInject(app, 'POST', '/api/auth/signup', {
+    const res = await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'weak@example.com',
       password: 'short',
     });
@@ -95,7 +114,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
 
   // Test 2b: invalid email → 400
   it('POST /api/auth/signup rejects invalid email with 400', async () => {
-    const res = await jsonInject(app, 'POST', '/api/auth/signup', {
+    const res = await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'not-an-email',
       password: 'password123',
     });
@@ -106,12 +125,12 @@ describe('Auth API — Signup, Verify, Resend', () => {
 
   // Test 3: duplicate email with different case → 409
   it('POST /api/auth/signup rejects duplicate email (case-insensitive) with 409', async () => {
-    await jsonInject(app, 'POST', '/api/auth/signup', {
+    await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'duplicate@example.com',
       password: 'password123',
     });
 
-    const res = await jsonInject(app, 'POST', '/api/auth/signup', {
+    const res = await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'DUPLICATE@EXAMPLE.COM',
       password: 'password123',
     });
@@ -122,12 +141,12 @@ describe('Auth API — Signup, Verify, Resend', () => {
 
   // Test 3b: duplicate email with leading/trailing spaces → 409
   it('POST /api/auth/signup rejects duplicate email with leading/trailing spaces with 409', async () => {
-    await jsonInject(app, 'POST', '/api/auth/signup', {
+    await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'spaces@example.com',
       password: 'password123',
     });
 
-    const res = await jsonInject(app, 'POST', '/api/auth/signup', {
+    const res = await apiRequest(app, 'POST', '/api/auth/signup', {
       email: '  spaces@example.com  ',
       password: 'password123',
     });
@@ -138,7 +157,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
 
   // Test 4: verification email arrives in Mailpit
   it('POST /api/auth/signup sends verification email to Mailpit', async () => {
-    await jsonInject(app, 'POST', '/api/auth/signup', {
+    await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'mailpit@example.com',
       password: 'password123',
     });
@@ -146,7 +165,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
     // Wait for email to arrive
     await new Promise((r) => setTimeout(r, 500));
 
-    const msg = await fetchMailpitMessage();
+    const msg = await fetchLatestMailpitMessageFor('mailpit@example.com');
     expect(msg).not.toBeNull();
     const body = msg!.HTML ?? msg!.Text ?? '';
     expect(body).toContain('/verify?token=');
@@ -155,7 +174,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
   // Test 5: verify with token → success; email_verified_at set; reuse → used
   it('POST /api/auth/verify returns success for valid token and marks used', async () => {
     // Signup
-    await jsonInject(app, 'POST', '/api/auth/signup', {
+    await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'verify1@example.com',
       password: 'password123',
     });
@@ -163,13 +182,13 @@ describe('Auth API — Signup, Verify, Resend', () => {
     await new Promise((r) => setTimeout(r, 500));
 
     // Get token from Mailpit
-    const msg = await fetchMailpitMessage();
+    const msg = await fetchLatestMailpitMessageFor('verify1@example.com');
     expect(msg).not.toBeNull();
     const token = extractTokenFromHtml(msg!.HTML ?? '');
     expect(token).not.toBeNull();
 
     // Verify
-    const res = await jsonInject(app, 'POST', '/api/auth/verify', { token });
+    const res = await apiRequest(app, 'POST', '/api/auth/verify', { token });
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ status: 'success' });
 
@@ -181,7 +200,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
     expect(user.rows[0].email_verified_at).not.toBeNull();
 
     // Reuse token → used
-    const res2 = await jsonInject(app, 'POST', '/api/auth/verify', { token });
+    const res2 = await apiRequest(app, 'POST', '/api/auth/verify', { token });
     expect(res2.statusCode).toBe(200);
     expect(res2.body).toEqual({ status: 'used' });
   });
@@ -189,7 +208,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
   // Test 6: expired token → expired
   it('POST /api/auth/verify returns expired for expired token (fixture)', async () => {
     // Signup a user
-    await jsonInject(app, 'POST', '/api/auth/signup', {
+    await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'expired-token@example.com',
       password: 'password123',
     });
@@ -197,7 +216,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
     await new Promise((r) => setTimeout(r, 500));
 
     // Get the token from Mailpit
-    const msg = await fetchMailpitMessage();
+    const msg = await fetchLatestMailpitMessageFor('expired-token@example.com');
     expect(msg).not.toBeNull();
     const token = extractTokenFromHtml(msg!.HTML ?? '');
     expect(token).not.toBeNull();
@@ -209,14 +228,14 @@ describe('Auth API — Signup, Verify, Resend', () => {
       [tokenHash],
     );
 
-    const res = await jsonInject(app, 'POST', '/api/auth/verify', { token });
+    const res = await apiRequest(app, 'POST', '/api/auth/verify', { token });
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ status: 'expired' });
   });
 
   // Test 7: garbage token → invalid
   it('POST /api/auth/verify returns invalid for garbage token', async () => {
-    const res = await jsonInject(app, 'POST', '/api/auth/verify', {
+    const res = await apiRequest(app, 'POST', '/api/auth/verify', {
       token: 'this-is-not-a-real-token-abcdef123456',
     });
 
@@ -227,7 +246,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
   // Test 8: resend for the user → 202; old token invalid; new token works
   it('POST /api/auth/resend-verification invalidates old token and issues new one', async () => {
     // Signup first user
-    await jsonInject(app, 'POST', '/api/auth/signup', {
+    await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'resend-user@example.com',
       password: 'password123',
     });
@@ -235,27 +254,27 @@ describe('Auth API — Signup, Verify, Resend', () => {
     await new Promise((r) => setTimeout(r, 500));
 
     // Signup resend test user
-    await jsonInject(app, 'POST', '/api/auth/signup', {
+    await apiRequest(app, 'POST', '/api/auth/signup', {
       email: 'resend-test@example.com',
       password: 'password123',
     });
 
     await new Promise((r) => setTimeout(r, 500));
 
-    // Get first token for resend user (most recent email)
-    const msg = await fetchMailpitMessage();
-    expect(msg).not.toBeNull();
-    const firstToken = extractTokenFromHtml(msg!.HTML ?? '');
+    // Get first token for resend user (most recent email before resend)
+    const msgsBefore = await fetchMailpitMessagesFor('resend-test@example.com');
+    expect(msgsBefore.length).toBeGreaterThanOrEqual(1);
+    const firstToken = extractTokenFromHtml(msgsBefore[0]!.HTML ?? '');
     expect(firstToken).not.toBeNull();
 
     // Resend
-    const resResend = await jsonInject(app, 'POST', '/api/auth/resend-verification', {
+    const resResend = await apiRequest(app, 'POST', '/api/auth/resend-verification', {
       email: '  resend-test@example.com  ',
     });
     expect(resResend.statusCode).toBe(202);
 
     // Old token should now be invalid
-    const resOldAfter = await jsonInject(app, 'POST', '/api/auth/verify', {
+    const resOldAfter = await apiRequest(app, 'POST', '/api/auth/verify', {
       token: firstToken,
     });
     expect(resOldAfter.statusCode).toBe(200);
@@ -263,12 +282,12 @@ describe('Auth API — Signup, Verify, Resend', () => {
 
     // New token from latest Mailpit message should work
     await new Promise((r) => setTimeout(r, 500));
-    const msg2 = await fetchMailpitMessage();
-    expect(msg2).not.toBeNull();
-    const newToken = extractTokenFromHtml(msg2!.HTML ?? '');
+    const msgsAfter = await fetchMailpitMessagesFor('resend-test@example.com');
+    expect(msgsAfter.length).toBeGreaterThanOrEqual(2);
+    const newToken = extractTokenFromHtml(msgsAfter[0]!.HTML ?? '');
     expect(newToken).not.toBeNull();
 
-    const resNew = await jsonInject(app, 'POST', '/api/auth/verify', {
+    const resNew = await apiRequest(app, 'POST', '/api/auth/verify', {
       token: newToken,
     });
     expect(resNew.statusCode).toBe(200);
@@ -277,11 +296,57 @@ describe('Auth API — Signup, Verify, Resend', () => {
 
   // Test 9: resend for unknown email → 202 (no enumeration)
   it('POST /api/auth/resend-verification returns 202 for unknown email', async () => {
-    const res = await jsonInject(app, 'POST', '/api/auth/resend-verification', {
+    const res = await apiRequest(app, 'POST', '/api/auth/resend-verification', {
       email: 'unknown-nobody@example.com',
     });
 
     expect(res.statusCode).toBe(202);
     expect(res.body).toHaveProperty('message');
+  });
+
+  // Test 10: used token remains 'used' after resend (not 'invalid')
+  it('POST /api/auth/verify returns used for token used before resend', async () => {
+    // Signup
+    await apiRequest(app, 'POST', '/api/auth/signup', {
+      email: 'used-before@example.com',
+      password: 'password123',
+    });
+
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Get token from Mailpit
+    const msgsBefore = await fetchMailpitMessagesFor('used-before@example.com');
+    expect(msgsBefore.length).toBeGreaterThanOrEqual(1);
+    const token = extractTokenFromHtml(msgsBefore[0]!.HTML ?? '');
+    expect(token).not.toBeNull();
+
+    // Verify → success (marks token as used)
+    const resVerify = await apiRequest(app, 'POST', '/api/auth/verify', { token });
+    expect(resVerify.statusCode).toBe(200);
+    expect(resVerify.body).toEqual({ status: 'success' });
+
+    // Resend → issues new token, old token should stay 'used'
+    const resResend = await apiRequest(app, 'POST', '/api/auth/resend-verification', {
+      email: 'used-before@example.com',
+    });
+    expect(resResend.statusCode).toBe(202);
+
+    // Old token should still be 'used', not 'invalid'
+    const resOld = await apiRequest(app, 'POST', '/api/auth/verify', { token });
+    expect(resOld.statusCode).toBe(200);
+    expect(resOld.body).toEqual({ status: 'used' });
+
+    // New token from Mailpit should work
+    await new Promise((r) => setTimeout(r, 500));
+    const msgsAfter = await fetchMailpitMessagesFor('used-before@example.com');
+    expect(msgsAfter.length).toBeGreaterThanOrEqual(2);
+    const newToken = extractTokenFromHtml(msgsAfter[0]!.HTML ?? '');
+    expect(newToken).not.toBeNull();
+
+    const resNew = await apiRequest(app, 'POST', '/api/auth/verify', {
+      token: newToken,
+    });
+    expect(resNew.statusCode).toBe(200);
+    expect(resNew.body).toEqual({ status: 'success' });
   });
 });
