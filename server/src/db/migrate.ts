@@ -1,18 +1,16 @@
-import { Pool } from 'pg';
-import fs from 'fs';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import pg from 'pg';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-const migrationSql = fs.readFileSync(
-  join(__dirname, '../../drizzle/0000_init.sql'),
-  'utf8',
-);
+const migrationsFolder = join(__dirname, '../../drizzle');
 
 export async function runMigrations(url: string) {
-  const pool = new Pool({ connectionString: url });
-  await pool.query(migrationSql);
+  const pool = new pg.Pool({ connectionString: url });
+  const db = drizzle(pool);
+  await migrate(db, { migrationsFolder });
   await pool.end();
 }
