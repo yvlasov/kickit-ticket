@@ -118,8 +118,18 @@ test.describe('Full UI journey', () => {
     // Step 5: release
     await page.mouse.up();
 
+    // Track PATCH during drag
+    const patchResponses: Array<{ url: string; status: number }> = [];
+    page.on('response', async (resp) => {
+      if (resp.url().includes('/api/tickets/') && resp.request().method() === 'PATCH') {
+        patchResponses.push({ url: resp.url(), status: resp.status() });
+      }
+    });
+
     // Wait for optimistic update + PATCH request to settle
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+
+    console.log('Journey drag: URL=', page.url(), 'PATCH=', JSON.stringify(patchResponses));
 
     // 12. Assert the card now appears in the In-progress column
     const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
