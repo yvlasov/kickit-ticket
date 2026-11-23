@@ -1,6 +1,18 @@
-import { useState, useCallback, type FormEvent } from 'react';
+import { useState, useCallback, useRef, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router';
+import {
+  DndContext,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { useDraggable } from '@dnd-kit/core';
+import { useDroppable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import { apiFetch, handleUnauthorized } from '../api';
 import {
   groupTicketsByState,
@@ -10,6 +22,8 @@ import {
 } from '../utils/board';
 import { ticketQueryKey, type BoardFilters } from '../utils/queryKeys';
 import FilterBar from '../components/FilterBar';
+import Toast from '../components/Toast';
+import { useUpdateTicketState } from '../hooks/useUpdateTicketState';
 
 interface TeamRow {
   id: string;
@@ -100,19 +114,67 @@ function CardSkeleton(): JSX.Element {
   );
 }
 
-function Column({
+function DraggableCard({
+  ticket,
+}: {
+  ticket: TicketRow;
+}): JSX.Element {
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({ id: ticket.id });
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <a
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      href={`/tickets/${ticket.id}`}
+      className="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="font-medium text-sm text-gray-900 truncate">
+          {ticket.title}
+        </span>
+        <span
+          className={`inline-block px-2 py-0.5 rounded text-xs font-medium ml-2 flex-shrink-0 ${typeBadge(ticket.type)}`}
+        >
+          {ticket.type}
+        </span>
+      </div>
+      {ticket.epicTitle && (
+        <p className="text-xs text-gray-500 truncate">{ticket.epicTitle}</p>
+      )}
+    </a>
+  );
+}
+
+function DroppableColumn({
   state,
   tickets,
   isLoading,
+  onStateChange,
 }: {
   state: string;
   tickets: Array<TicketRow>;
   isLoading: boolean;
+  onStateChange: (ticketId: string, newState: string) => void;
 }): JSX.Element {
+  const { setNodeRef, isOver } = useDroppable({ id: state });
   const label = STATE_LABELS[state] ?? state;
 
   return (
-    <div className="bg-gray-100 rounded-lg p-3 flex-1 min-w-0 flex flex-col">
+    <div
+      ref={setNodeRef}
+      className="bg-gray-100 rounded-lg p-3 flex-1 min-w-0 flex flex-col"
+      style={{
+        outline: isOver ? '2px solid #3b82f6' : '2px solid transparent',
+        outlineOffset: '-2px',
+      }}
+    >
       <h3 className="text-sm font-semibold text-gray-700 mb-3">{label}</h3>
       {isLoading ? (
         <>
@@ -124,25 +186,7 @@ function Column({
       ) : (
         <div className="space-y-2 flex-1">
           {tickets.map((t) => (
-            <a
-              key={t.id}
-              href={`/tickets/${t.id}`}
-              className="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-medium text-sm text-gray-900 truncate">
-                  {t.title}
-                </span>
-                <span
-                  className={`inline-block px-2 py-0.5 rounded text-xs font-medium ml-2 flex-shrink-0 ${typeBadge(t.type)}`}
-                >
-                  {t.type}
-                </span>
-              </div>
-              {t.epicTitle && (
-                <p className="text-xs text-gray-500 truncate">{t.epicTitle}</p>
-              )}
-            </a>
+            <DraggableCard key={t.id} ticket={t} />
           ))}
         </div>
       )}
@@ -155,6 +199,7 @@ export default function Board() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const {
     data: teams,
@@ -164,14 +209,12 @@ export default function Board() {
 
   const selectedTeamId = searchParams.get('teamId') ?? '';
 
-  // Read filters from URL search params
   const filters: BoardFilters = {
     type: searchParams.get('type') ?? undefined,
     epic: searchParams.get('epic') ?? undefined,
     q: searchParams.get('q') ?? undefined,
   };
 
-  // Build query string from filters (omit empty values)
   const queryString = buildQuery(filters);
 
   const {
@@ -206,7 +249,6 @@ export default function Board() {
     retry: false,
   });
 
-  // Auto-select first team when none is selected
   const [autoSelected] = useState(false);
   const [autoSelectedRef] = useState({ current: false });
 
@@ -216,7 +258,6 @@ export default function Board() {
     setError('Failed to load tickets');
   }
 
-  // Auto-select first team on load
   if (!autoSelectedRef.current && teams && teams.length > 0 && !selectedTeamId) {
     autoSelectedRef.current = true;
     setSearchParams({ teamId: teams[0].id });
@@ -235,6 +276,38 @@ export default function Board() {
     if (newFilters.epic) params.epic = newFilters.epic;
     if (newFilters.q) params.q = newFilters.q;
     setSearchParams(params, { replace: true });
+  }
+
+  const updateState = useUpdateTicketState({
+    teamId: selectedTeamId,
+    filters,
+    onError: setToastMessage,
+  });
+
+  function handleStateChange(ticketId: string, newState: string) {
+    updateState.mutate({ ticketId, newState });
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor),
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    const ticketId = active.id as string;
+    const newState = over.id as string;
+
+    if (!STATE_ORDER.includes(newState)) return;
+
+    const draggedTicket = tickets?.find((t) => t.id === ticketId);
+    if (draggedTicket && draggedTicket.state === newState) return;
+
+    updateState.mutate({ ticketId, newState });
   }
 
   // No teams at all
@@ -259,7 +332,6 @@ export default function Board() {
     );
   }
 
-  // No team selected (shouldn't happen with auto-select, but defensive)
   if (!selectedTeamId) {
     return (
       <div className="min-h-screen bg-gray-100">
@@ -271,7 +343,6 @@ export default function Board() {
     );
   }
 
-  // Error state with retry
   if (error) {
     return (
       <div className="min-h-screen bg-gray-100">
@@ -349,18 +420,29 @@ export default function Board() {
             ))}
           </div>
         ) : (
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {STATE_ORDER.map((state) => (
-              <Column
-                key={state}
-                state={state}
-                tickets={grouped[state] ?? []}
-                isLoading={false}
-              />
-            ))}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-4 overflow-x-auto pb-4">
+              {STATE_ORDER.map((state) => (
+                <DroppableColumn
+                  key={state}
+                  state={state}
+                  tickets={grouped[state] ?? []}
+                  isLoading={false}
+                  onStateChange={handleStateChange}
+                />
+              ))}
+            </div>
+          </DndContext>
         )}
       </div>
+
+      {toastMessage && (
+        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+      )}
     </div>
   );
 }
