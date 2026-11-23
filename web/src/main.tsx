@@ -8,6 +8,7 @@ import CheckEmail from './pages/CheckEmail';
 import Verify from './pages/Verify';
 import Login from './pages/Login';
 import Home from './pages/Teams';
+import Epics from './pages/Epics';
 import AppShell from './components/AppShell';
 import { queryClient, handleUnauthorized } from './api';
 
@@ -39,6 +40,14 @@ function App() {
         element={
           <ProtectedRoute>
             <Home />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/epics"
+        element={
+          <ProtectedRoute>
+            <Epics />
           </ProtectedRoute>
         }
       />

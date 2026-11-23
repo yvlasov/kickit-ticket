@@ -2,12 +2,13 @@ import { type FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
 import { Pool } from 'pg';
-import { signupSchema, verifySchema, resendSchema, loginSchema, createTeamSchema, renameTeamSchema } from '@kickit/shared';
+import { signupSchema, verifySchema, resendSchema, loginSchema, createTeamSchema, renameTeamSchema, createEpicSchema, editEpicSchema } from '@kickit/shared';
 import { signup, verifyToken, resendVerification, verifyPassword } from './services/auth.ts';
 import { createSession, deleteSession } from './services/session.ts';
 import { requireSession } from './plugins/session.ts';
-import { users, teams } from './db/schema.ts';
+import { users, teams, epics, tickets } from './db/schema.ts';
 import { listTeams, createTeam, renameTeam, checkDeleteTeam } from './services/team.ts';
+import { listEpics, createEpic, editEpic, checkDeleteEpic, findTeamById, listTeams as listEpicTeams } from './services/epic.ts';
 
 export default async function routes(app: FastifyInstance) {
   app.get('/health', async () => {
@@ -338,6 +339,161 @@ export default async function routes(app: FastifyInstance) {
 
       // Delete the team
       await db.delete(teams).where(eq(teams.id, teamId));
+      return reply.code(204).send();
+    } finally {
+      await pool.end();
+    }
+  });
+
+  // ---- Epic routes ----
+
+  app.get('/epics', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      const searchParams = new URL(request.url, `http://${request.headers.host}`).searchParams;
+      const teamId = searchParams.get('teamId');
+
+      if (teamId !== null) {
+        const isValid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+        if (!isValid) {
+          return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid teamId format' } });
+        }
+      }
+
+      const epics = await listEpics(db, teamId ?? undefined);
+      return reply.code(200).send(epics);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  app.post('/epics', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const parseResult = createEpicSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const details = parseResult.error.errors.map((e) => ({
+        field: e.path.filter((p): p is string => typeof p === 'string').join('.'),
+        message: e.message,
+      }));
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details } });
+    }
+
+    const { teamId, title, description } = parseResult.data;
+    const normalizedDesc = description ?? null;
+
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      // Validate team exists
+      const team = await findTeamById(db, teamId);
+      if (!team) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Unknown teamId' } });
+      }
+
+      const epic = await createEpic(db, pool, teamId, title, normalizedDesc);
+      return reply.code(201).send(epic);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  app.patch('/epics/:id', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const epicId = (request.params as Record<string, string>).id;
+
+    const parseResult = editEpicSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const details = parseResult.error.errors.map((e) => ({
+        field: e.path.filter((p): p is string => typeof p === 'string').join('.'),
+        message: e.message,
+      }));
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details } });
+    }
+
+    const { title, description } = parseResult.data;
+    const normalizedDesc = description ?? null;
+
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      const result = await editEpic(db, epicId, title, normalizedDesc);
+
+      if (result === null) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Epic not found' } });
+      }
+
+      return reply.code(200).send(result);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  app.delete('/epics/:id', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const epicId = (request.params as Record<string, string>).id;
+
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      // Verify epic exists before checking counts
+      const existing = await db
+        .select({ id: epics.id })
+        .from(epics)
+        .where(eq(epics.id, epicId))
+        .limit(1)
+        .then((rows) => rows[0]);
+
+      if (!existing) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Epic not found' } });
+      }
+
+      const counts = await checkDeleteEpic(db, epicId);
+
+      if (counts.ticketCount > 0) {
+        return reply.code(409).send({
+          error: {
+            code: 'EPIC_NOT_EMPTY',
+            message: `Cannot delete epic: referenced by ${counts.ticketCount} ticket(s)`,
+          },
+        });
+      }
+
+      // Delete the epic
+      await db.delete(epics).where(eq(epics.id, epicId));
       return reply.code(204).send();
     } finally {
       await pool.end();

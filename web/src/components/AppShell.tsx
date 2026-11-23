@@ -57,9 +57,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-100">
       <header className="bg-white shadow">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <a href="/" className="text-lg font-bold text-blue-600">
-            KickIt Ticket
-          </a>
+          <div className="flex items-center gap-4">
+            <a href="/" className="text-lg font-bold text-blue-600">
+              KickIt Ticket
+            </a>
+            <nav className="flex gap-3 text-sm">
+              <a href="/" className="text-gray-600 hover:text-gray-900">Teams</a>
+              <a href="/epics" className="text-gray-600 hover:text-gray-900">Epics</a>
+            </nav>
+          </div>
           {user && (
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">{user.email}</span>
