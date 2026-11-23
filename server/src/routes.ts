@@ -1,5 +1,6 @@
 import { type FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { eq } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { signupSchema, verifySchema, resendSchema, loginSchema } from '@kickit/shared';
 import { signup, verifyToken, resendVerification, verifyPassword } from './services/auth.ts';
@@ -135,7 +136,7 @@ export default async function routes(app: FastifyInstance) {
       const userRow = await db
         .select({ id: users.id, email: users.email, passwordHash: users.passwordHash, emailVerifiedAt: users.emailVerifiedAt })
         .from(users)
-        .where(users.email === email)
+        .where(eq(users.email, email))
         .limit(1)
         .then((rows) => rows[0]);
 

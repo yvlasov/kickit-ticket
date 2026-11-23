@@ -17,7 +17,7 @@ declare module 'fastify' {
 }
 
 export async function sessionGuardPlugin(app: FastifyInstance, _opts: unknown, done: (err?: Error) => void) {
-  app.decorateRequest('user', null);
+  app.decorateRequest('user', null as unknown as SessionUser);
   done();
 }
 

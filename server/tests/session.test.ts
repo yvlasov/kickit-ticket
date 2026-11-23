@@ -58,7 +58,7 @@ async function apiRequest(app: Awaited<ReturnType<typeof buildApp>>, method: str
   };
 }
 
-async function signupAndVerify(app: Awaited<ReturnType<typeof buildApp>>, email: string, password: string): Promise<{ id: string }> {
+async function signupAndVerify(app: Awaited<ReturnType<typeof buildApp>>, p: Pool, email: string, password: string): Promise<{ id: string }> {
   await apiRequest(app, 'POST', '/api/auth/signup', { email, password });
   await new Promise((r) => setTimeout(r, 500));
   const msg = await fetchLatestMailpitMessageFor(email);
@@ -68,7 +68,7 @@ async function signupAndVerify(app: Awaited<ReturnType<typeof buildApp>>, email:
   const res = await apiRequest(app, 'POST', '/api/auth/verify', { token });
   expect(res.statusCode).toBe(200);
   expect(res.body).toEqual({ status: 'success' });
-  const user = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  const user = await p.query('SELECT id FROM users WHERE email = $1', [email]);
   return { id: user.rows[0].id };
 }
 
@@ -101,7 +101,7 @@ describe('Auth API — Login, Logout, Me', () => {
 
   // Test 1: verified user login → 200 {id,email}; Set-Cookie present with HttpOnly and SameSite=Lax, NO Secure flag; sessions row exists
   it('POST /api/auth/login returns 200 with cookie for verified user', async () => {
-    const { id } = await signupAndVerify(app, 'login1@example.com', 'password123');
+    const { id } = await signupAndVerify(app, pool, 'login1@example.com', 'password123');
 
     const res = await apiRequest(app, 'POST', '/api/auth/login', {
       email: 'login1@example.com',
@@ -134,7 +134,7 @@ describe('Auth API — Login, Logout, Me', () => {
 
   // Test 2: wrong password → 401 INVALID_CREDENTIALS
   it('POST /api/auth/login returns 401 for wrong password', async () => {
-    await signupAndVerify(app, 'wrongpass@example.com', 'password123');
+    await signupAndVerify(app, pool, 'wrongpass@example.com', 'password123');
 
     const res = await apiRequest(app, 'POST', '/api/auth/login', {
       email: 'wrongpass@example.com',
@@ -174,7 +174,7 @@ describe('Auth API — Login, Logout, Me', () => {
 
   // Test 4a: GET me with session cookie → 200 {id,email}
   it('GET /api/auth/me returns user with valid session cookie', async () => {
-    const { id } = await signupAndVerify(app, 'me-user@example.com', 'password123');
+    const { id } = await signupAndVerify(app, pool, 'me-user@example.com', 'password123');
 
     const loginRes = await apiRequest(app, 'POST', '/api/auth/login', {
       email: 'me-user@example.com',
@@ -207,7 +207,7 @@ describe('Auth API — Login, Logout, Me', () => {
 
   // Test 5: expired session → me 401
   it('GET /api/auth/me returns 401 for expired session', async () => {
-    await signupAndVerify(app, 'expired@example.com', 'password123');
+    await signupAndVerify(app, pool, 'expired@example.com', 'password123');
 
     // Login to get a session
     const loginRes = await apiRequest(app, 'POST', '/api/auth/login', {
@@ -231,7 +231,7 @@ describe('Auth API — Login, Logout, Me', () => {
 
   // Test 6: logout with cookie → 204; session deleted; me afterwards → 401
   it('POST /api/auth/logout deletes session and clears cookie', async () => {
-    await signupAndVerify(app, 'logout-user@example.com', 'password123');
+    await signupAndVerify(app, pool, 'logout-user@example.com', 'password123');
 
     const loginRes = await apiRequest(app, 'POST', '/api/auth/login', {
       email: 'logout-user@example.com',
