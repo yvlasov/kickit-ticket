@@ -8,6 +8,11 @@ import {
   createTicketViaApi,
 } from './helpers';
 
+// Stable card locator: cards are <a href="/tickets/..."> inside columns
+function cardLocator(page: any) {
+  return page.locator('a[href^="/tickets/"]');
+}
+
 test.describe('Filters', () => {
   test('combined filters; URL persistence; goBack restores', async ({ page }) => {
     const email = uniqueEmail();
@@ -48,7 +53,7 @@ test.describe('Filters', () => {
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
     // Wait for cards to appear
-    const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
+    const cards = cardLocator(page);
     let cardCount = 0;
     for (let i = 0; i < 20; i++) {
       cardCount = await cards.count();

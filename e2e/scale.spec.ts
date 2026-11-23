@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { execSync } from 'child_process';
 
+// Stable card locator: cards are <a href="/tickets/..."> inside columns
+function cardLocator(page: any) {
+  return page.locator('a[href^="/tickets/"]');
+}
+
 test.describe('Scale', () => {
   test('demo script creates 100+ tickets; filter subset; page responsive', async ({ page }) => {
     const baseUrl = process.env.BASE_URL ?? 'http://app:3000';
@@ -40,7 +45,7 @@ test.describe('Scale', () => {
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 15000 });
 
     // Wait for cards to render (poll for up to 20s)
-    const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
+    const cards = cardLocator(page);
     let cardCount = 0;
     for (let i = 0; i < 40; i++) {
       cardCount = await cards.count();
@@ -54,7 +59,7 @@ test.describe('Scale', () => {
     await page.waitForTimeout(1000);
 
     // Assert subset renders
-    const filteredCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
+    const filteredCards = cardLocator(page);
     const filteredCount = await filteredCards.count();
     expect(filteredCount).toBeGreaterThan(0);
     expect(filteredCount).toBeLessThan(cardCount);
@@ -63,7 +68,7 @@ test.describe('Scale', () => {
     await page.locator('select').nth(1).selectOption('all');
     await page.waitForTimeout(500);
 
-    const allCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
+    const allCards = cardLocator(page);
     const allCount = await allCards.count();
     expect(allCount).toBeGreaterThanOrEqual(100);
   });

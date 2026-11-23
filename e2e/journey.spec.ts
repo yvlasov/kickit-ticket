@@ -8,6 +8,11 @@ import {
   createTicketViaApi,
 } from './helpers';
 
+// Stable column locator: find column div by its h3 heading text
+function columnLocator(page: any, heading: string) {
+  return page.locator('h3', { hasText: heading }).first().locator('..');
+}
+
 test.describe('Full UI journey', () => {
   test('signup → verify → login → team → epic → ticket → drag → refresh persists', async ({ page }) => {
     const email = uniqueEmail();
@@ -87,37 +92,49 @@ test.describe('Full UI journey', () => {
     const ticketId = page.url().split('/').pop() ?? '';
     expect(ticketId).toBeTruthy();
 
-    // 11. Change ticket state to "in_progress" via API (simulating drag)
-    await page.request.patch(`/api/tickets/${ticketId}`, {
-      data: { state: 'in_progress' },
-    });
-
-    // 12. Navigate to board and verify card is in "In progress" column
+    // 11. REAL DRAG: card from New column to In progress column
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
     // Wait for cards to appear
-    const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
-    let cardCount = 0;
-    for (let i = 0; i < 20; i++) {
-      cardCount = await cards.count();
-      if (cardCount >= 1) break;
-      await page.waitForTimeout(500);
+    const newCol = columnLocator(page, 'New');
+    const inProgressCol = columnLocator(page, 'In progress');
+    const card = newCol.locator('a[href^="/tickets/"]').first();
+    await expect(card).toBeVisible({ timeout: 10000 });
+
+    const cardBox = await card.boundingBox();
+    const colBox = await inProgressCol.boundingBox();
+    expect(cardBox).toBeTruthy();
+    expect(colBox).toBeTruthy();
+
+    if (cardBox && colBox) {
+      // Move to card center
+      await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+      // Press down
+      await page.mouse.down();
+      // Move slightly to exceed PointerSensor activationConstraint distance=6
+      await page.mouse.move(cardBox.x + cardBox.width / 2 + 15, cardBox.y + cardBox.height / 2 + 15, { steps: 5 });
+      // Drag to target column center
+      await page.mouse.move(colBox.x + colBox.width / 2, colBox.y + colBox.height / 2, { steps: 15 });
+      // Release
+      await page.mouse.up();
     }
 
-    // Verify card is in "In progress" column
-    const inProgressColumn = page.locator('h3', { hasText: 'In progress' }).first().locator('..');
-    const inProgressCards = inProgressColumn.locator('a.bg-white');
+    // Wait for optimistic update + PATCH request to settle
+    await page.waitForTimeout(2000);
+
+    // 12. Assert the card now appears in the In-progress column
+    const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
     await expect(inProgressCards.first()).toBeVisible({ timeout: 5000 });
 
     // Verify the card title is visible
     await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
 
-    // 13. Page reload — card should still be in In progress
+    // 13. Page reload — card should STILL be in In progress (persisted)
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
-    const inProgressAfterReload = inProgressColumn.locator('a.bg-white');
+    const inProgressAfterReload = inProgressCol.locator('a[href^="/tickets/"]');
     await expect(inProgressAfterReload.first()).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
   });

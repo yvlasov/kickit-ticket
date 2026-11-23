@@ -8,6 +8,11 @@ import {
   createTicketViaApi,
 } from './helpers';
 
+// Stable column locator: find column div by its h3 heading text
+function columnLocator(page: any, heading: string) {
+  return page.locator('h3', { hasText: heading }).first().locator('..');
+}
+
 test.describe('Drag rollback', () => {
   test('route abort shows snap-back + error toast', async ({ page }) => {
     const email = uniqueEmail();
@@ -40,19 +45,11 @@ test.describe('Drag rollback', () => {
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
-    // Wait for cards to appear
-    const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
-    let cardCount = 0;
-    for (let i = 0; i < 20; i++) {
-      cardCount = await cards.count();
-      if (cardCount >= 1) break;
-      await page.waitForTimeout(500);
-    }
-
-    // Verify ticket is in "New" state
-    const newColumn = page.locator('h3', { hasText: 'New' }).first().locator('..');
-    const newCards = newColumn.locator('a.bg-white');
-    await expect(newCards.first()).toBeVisible();
+    // Locate columns and card
+    const newCol = columnLocator(page, 'New');
+    const inProgressCol = columnLocator(page, 'In progress');
+    const card = newCol.locator('a[href^="/tickets/"]').first();
+    await expect(card).toBeVisible({ timeout: 10000 });
 
     // Route PATCH requests to return 500 (simulate server failure during drag)
     await page.route(`**/api/tickets/${ticketId}`, async (route) => {
@@ -66,30 +63,42 @@ test.describe('Drag rollback', () => {
       }
     });
 
-    // Simulate the drag state-change by making the PATCH request via the browser
-    const patchResult = await page.evaluate(async (id) => {
-      try {
-        const res = await fetch(`/api/tickets/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state: 'in_progress' }),
-        });
-        return { status: res.status, ok: res.ok, text: await res.text() };
-      } catch (err) {
-        return { error: (err as Error).message };
-      }
-    }, ticketId);
+    // REAL DRAG: card from New column to In progress column
+    const cardBox = await card.boundingBox();
+    const colBox = await inProgressCol.boundingBox();
+    expect(cardBox).toBeTruthy();
+    expect(colBox).toBeTruthy();
 
-    expect(patchResult.status).toBe(500);
+    if (cardBox && colBox) {
+      // Move to card center
+      await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+      // Press down
+      await page.mouse.down();
+      // Move slightly to exceed PointerSensor activationConstraint distance=6
+      await page.mouse.move(cardBox.x + cardBox.width / 2 + 15, cardBox.y + cardBox.height / 2 + 15, { steps: 5 });
+      // Drag to target column center
+      await page.mouse.move(colBox.x + colBox.width / 2, colBox.y + colBox.height / 2, { steps: 15 });
+      // Release
+      await page.mouse.up();
+    }
 
-    // Verify ticket is STILL in "New" state (state change was rejected)
-    const newCardsAfter = newColumn.locator('a.bg-white');
-    await expect(newCardsAfter.first()).toBeVisible();
+    // (a) Immediately after mouse.up, the card has optimistically appeared in the target column
+    // The optimistic update happens before the PATCH request settles
+    const inProgressCardsAfterDrag = inProgressCol.locator('a[href^="/tickets/"]');
+    await expect(inProgressCardsAfterDrag.first()).toBeVisible({ timeout: 3000 });
 
-    // Verify the ticket is NOT in "In progress"
-    const inProgressColumn = page.locator('h3', { hasText: 'In progress' }).first().locator('..');
-    const inProgressCards = inProgressColumn.locator('a.bg-white');
-    const inProgressCount = await inProgressCards.count();
+    // (b) After the failed request settles (~2s), the card snaps back to the original column
+    await page.waitForTimeout(2000);
+
+    const newColCardsAfterRollback = newCol.locator('a[href^="/tickets/"]');
+    await expect(newColCardsAfterRollback.first()).toBeVisible();
+
+    // (c) The error TOAST is visible with its message
+    await expect(page.getByText(/Could not move ticket/i)).toBeVisible({ timeout: 5000 });
+
+    // (d) The target column contains no card for this ticket afterwards
+    const inProgressCardsAfterRollback = inProgressCol.locator('a[href^="/tickets/"]');
+    const inProgressCount = await inProgressCardsAfterRollback.count();
     expect(inProgressCount).toBe(0);
 
     // Unroute
