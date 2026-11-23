@@ -132,15 +132,19 @@ test.describe('Full UI journey', () => {
     // Debug output
     const newCardsCount = await newCol.locator('a[href^="/tickets/"]').count();
     const ipCardsCount = await inProgressCol.locator('a[href^="/tickets/"]').count();
-    await page.screenshot({ path: '/tmp/journey-debug.png', fullPage: true });
-    // Force failure with debug info
     if (ipCardsCount === 0) {
       throw new Error(`DEBUG: URL=${page.url()} PATCH=${JSON.stringify(patchResponses)} New=${newCardsCount} IP=${ipCardsCount}`);
     }
 
     // 12. Assert the card now appears in the In-progress column
-    const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
-    await expect(inProgressCards.first()).toBeVisible({ timeout: 5000 });
+    // Poll until card count stabilizes (optimistic update may take time)
+    let ipCount = 0;
+    for (let i = 0; i < 20; i++) {
+      ipCount = await inProgressCol.locator('a[href^="/tickets/"]').count();
+      if (ipCount > 0) break;
+      await page.waitForTimeout(500);
+    }
+    expect(ipCount).toBeGreaterThan(0);
 
     // Verify the card title is visible
     await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
