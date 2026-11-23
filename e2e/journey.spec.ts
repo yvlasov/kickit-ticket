@@ -106,16 +106,19 @@ test.describe('Full UI journey', () => {
     expect(colBox).toBeTruthy();
 
     // Intercept navigation to ticket detail (the <a> href would navigate on click)
-    // This prevents the drag from being interrupted by navigation
     const navigationPromise = page.waitForEvent('request', {
       predicate: req => req.url().includes('/tickets/') && !req.url().includes('/api/'),
       timeout: 3000,
     });
 
-    // Dispatch pointer events manually (page.mouse doesn't fire pointer events)
+    // Dispatch pointer events directly on the card anchor element
+    // (elementFromPoint returns inner children, not the anchor itself)
     const dragResult = await page.evaluate(
       ({ cx, cy, tx, ty }: { cx: number; cy: number; tx: number; ty: number }) => {
         const events: string[] = [];
+        const anchor = document.querySelector('a[href^="/tickets/"]') as HTMLAnchorElement;
+
+        if (!anchor) return ['no anchor found'];
 
         const dispatch = (type: string, x: number, y: number) => {
           const opts: PointerEventInit = {
@@ -128,18 +131,13 @@ test.describe('Full UI journey', () => {
             pointerType: 'mouse',
             pointerId: 1,
           };
-          const el = document.elementFromPoint(x, y);
-          if (el) {
-            el.dispatchEvent(new PointerEvent(type, opts));
-            events.push(`${type} on ${el.tagName}.${el.className.split(' ')[0] || ''}`);
-          } else {
-            events.push(`${type} at (${x},${y}) — no element`);
-          }
+          anchor.dispatchEvent(new PointerEvent(type, opts));
+          events.push(`${type} on <a> at (${x},${y})`);
         };
 
-        // pointerdown on card
+        // pointerdown on card anchor
         dispatch('pointerdown', cx, cy);
-        // pointermove to exceed activation distance
+        // pointermove to exceed activation distance (distance: 6)
         dispatch('pointermove', cx + 10, cy + 10);
         // pointermove toward target
         dispatch('pointermove', tx, ty);
@@ -156,14 +154,12 @@ test.describe('Full UI journey', () => {
       },
     );
 
-    console.log('Pointer events dispatched:', JSON.stringify(dragResult));
+    console.log('Pointer events on anchor:', JSON.stringify(dragResult));
 
     // Wait for potential navigation (the <a> click that follows pointerup)
     try {
       await navigationPromise;
-      // Navigation was intercepted — wait for it to complete
       await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
-      // Go back to board
       await page.goBack();
       await page.waitForTimeout(1000);
     } catch {
