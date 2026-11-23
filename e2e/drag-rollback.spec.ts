@@ -42,9 +42,10 @@ test.describe('Drag rollback', () => {
     const card = newCol.locator('a[href^="/tickets/"]').first();
     await expect(card).toBeVisible({ timeout: 10000 });
 
-    // Prevent the <a> click from navigating — keeps Board mounted so toast is visible
+    // Prevent navigation: remove href temporarily
+    const cardHref = await card.getAttribute('href');
     await card.evaluate((el: HTMLElement) => {
-      el.addEventListener('click', (e) => e.preventDefault(), { capture: true });
+      (el as HTMLAnchorElement).removeAttribute('href');
     });
 
     // Route PATCH requests to return 500
@@ -85,6 +86,13 @@ test.describe('Drag rollback', () => {
     // (d) Target column has no card
     const inProgressCardsAfterRollback = inProgressCol.locator('a[href^="/tickets/"]');
     expect(await inProgressCardsAfterRollback.count()).toBe(0);
+
+    // Restore href
+    if (cardHref) {
+      await card.evaluate((el: HTMLElement, href: string) => {
+        (el as HTMLAnchorElement).setAttribute('href', href);
+      }, cardHref);
+    }
 
     await page.unroute(`**/api/tickets/${ticketId}`);
   });
