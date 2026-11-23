@@ -15,7 +15,13 @@ function columnLocator(page: any, heading: string) {
 test.describe('Drag diagnostics with logging', () => {
   test('capture console logs during drag', async ({ page }) => {
     const logs: string[] = [];
-    page.on('console', (msg) => logs.push(msg.text()));
+    page.on('console', (msg) => {
+      const text = msg.text();
+      if (text.includes('[DraggableCard]') || text.includes('[Board]') || text.includes('onClick') || text.includes('pointerup')) {
+        logs.push(text);
+        console.log('>>> CONSOLE:', text);
+      }
+    });
 
     const email = uniqueEmail();
     const password = 'E2Etest123';
@@ -70,25 +76,22 @@ test.describe('Drag diagnostics with logging', () => {
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
+    console.log('>>> About to drag');
     // REAL DRAG — no href hack
     await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
     await page.mouse.down();
     await page.mouse.move(cardBox.x + cardBox.width / 2 + 20, cardBox.y + cardBox.height / 2, { steps: 5 });
     await page.mouse.move(colBox.x + colBox.width / 2, colBox.y + colBox.height / 2, { steps: 15 });
     await page.mouse.up();
+    console.log('>>> Drag complete, waiting');
 
     await page.waitForTimeout(3000);
+    console.log('>>> After wait, URL:', page.url());
+    console.log('>>> After wait, PATCH:', JSON.stringify(patchResponses));
 
-    // Print relevant logs
-    const relevantLogs = logs.filter(l =>
-      l.includes('[DraggableCard]') || l.includes('[Board]') || l.includes('onClick') || l.includes('pointerup')
-    );
-    console.log('=== RELEVANT LOGS ===');
-    relevantLogs.forEach(l => console.log(l));
-    console.log('=== END LOGS ===');
-
-    console.log('URL:', page.url());
-    console.log('PATCH responses:', JSON.stringify(patchResponses));
+    console.log('=== ALL CAPTURED LOGS ===');
+    logs.forEach(l => console.log(l));
+    console.log('=== END LOGS (count:', logs.length, ')===');
 
     await page.unroute(`**/api/tickets/${ticketId}`);
     expect(true).toBe(true);
