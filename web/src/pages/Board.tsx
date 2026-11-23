@@ -116,8 +116,10 @@ function CardSkeleton(): JSX.Element {
 
 function DraggableCard({
   ticket,
+  justDraggedRef,
 }: {
   ticket: TicketRow;
+  justDraggedRef: React.MutableRefObject<boolean>;
 }): JSX.Element {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: ticket.id });
@@ -136,6 +138,7 @@ function DraggableCard({
       {...listeners}
       href={`/tickets/${ticket.id}`}
       className="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"
+      onClick={(e) => { if (justDraggedRef.current) e.preventDefault(); }}
     >
       <div className="flex items-center justify-between mb-1">
         <span className="font-medium text-sm text-gray-900 truncate">
@@ -159,11 +162,13 @@ function DroppableColumn({
   tickets,
   isLoading,
   onStateChange,
+  justDraggedRef,
 }: {
   state: string;
   tickets: Array<TicketRow>;
   isLoading: boolean;
   onStateChange: (ticketId: string, newState: string) => void;
+  justDraggedRef: React.MutableRefObject<boolean>;
 }): JSX.Element {
   const { setNodeRef, isOver } = useDroppable({ id: state });
   const label = STATE_LABELS[state] ?? state;
@@ -188,7 +193,7 @@ function DroppableColumn({
       ) : (
         <div className="space-y-2 flex-1">
           {tickets.map((t) => (
-            <DraggableCard key={t.id} ticket={t} />
+            <DraggableCard key={t.id} ticket={t} justDraggedRef={justDraggedRef} />
           ))}
         </div>
       )}
@@ -286,6 +291,8 @@ export default function Board() {
     onError: setToastMessage,
   });
 
+  const justDraggedRef = useRef(false);
+
   function handleStateChange(ticketId: string, newState: string) {
     updateState.mutate({ ticketId, newState });
   }
@@ -310,6 +317,9 @@ export default function Board() {
     if (draggedTicket && draggedTicket.state === newState) return;
 
     updateState.mutate({ ticketId, newState });
+
+    justDraggedRef.current = true;
+    window.setTimeout(() => { justDraggedRef.current = false; }, 100);
   }
 
   // No teams at all
@@ -435,6 +445,7 @@ export default function Board() {
                   tickets={grouped[state] ?? []}
                   isLoading={false}
                   onStateChange={handleStateChange}
+                  justDraggedRef={justDraggedRef}
                 />
               ))}
             </div>
