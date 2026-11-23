@@ -34,8 +34,8 @@ test.describe('Scale', () => {
     await page.getByRole('button', { name: 'Login' }).click();
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 15000 });
 
-    // Navigate to board (auto-selects first team)
-    await page.getByRole('link', { name: 'Board' }).click();
+    // Navigate to board via nav link
+    await page.getByRole('navigation').getByRole('link', { name: 'Board' }).click();
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 15000 });
 
     // Wait for cards to render

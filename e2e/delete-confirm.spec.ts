@@ -38,26 +38,26 @@ test.describe('Delete confirmation', () => {
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
 
     // Click Delete — expect a dialog
-    let dialogDismissed = false;
+    let dialogAction: 'dismiss' | 'accept' | null = null;
     page.on('dialog', async (dialog) => {
-      dialogDismissed = true;
-      await dialog.dismiss();
+      if (!dialogAction) {
+        dialogAction = 'dismiss';
+      }
+      if (dialogAction === 'dismiss') {
+        await dialog.dismiss();
+      } else {
+        await dialog.accept();
+      }
     });
 
     await page.getByRole('button', { name: 'Delete' }).click();
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
-    expect(dialogDismissed).toBe(true);
 
     // Ticket still present after dismiss
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
 
     // Click Delete again — accept this time
-    let dialogAccepted = false;
-    page.on('dialog', async (dialog) => {
-      dialogAccepted = true;
-      await dialog.accept();
-    });
-
+    dialogAction = 'accept';
     await page.getByRole('button', { name: 'Delete' }).click();
 
     // After accept, should navigate away

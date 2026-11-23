@@ -45,7 +45,7 @@ test.describe('Filters', () => {
 
     // Navigate to board
     await page.goto(`/board?teamId=${teamId}`);
-    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
     // Count initial cards
     const initialCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
@@ -92,7 +92,7 @@ test.describe('Filters', () => {
 
     // Reload — same subset should appear
     await page.reload();
-    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
     // Verify filters persisted
     expect(page.url()).toContain('type=bug');

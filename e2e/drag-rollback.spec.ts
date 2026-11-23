@@ -39,7 +39,7 @@ test.describe('Drag rollback', () => {
 
     // Navigate to board
     await page.goto(`/board?teamId=${teamId}`);
-    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
     // Route PATCH requests to abort (simulate server failure)
     await page.route(`**/api/tickets/${ticketId}`, async (route) => {
