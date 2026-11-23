@@ -7,6 +7,7 @@
     "shared"
   ],
   "scripts": {
-    "typecheck": "npm run typecheck -w server -w web"
+    "typecheck": "npm run typecheck -w server -w web",
+    "demo:data": "tsx scripts/demo-data.ts"
   }
 }
