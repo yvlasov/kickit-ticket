@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type FormEvent } from 'react';
+import { useState, useCallback, useRef, useEffect, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router';
 import {
@@ -129,16 +129,36 @@ function DraggableCard({
     touchAction: 'none',
   };
 
+  const anchorRef = useRef<HTMLAnchorElement | null>(null);
+
+  const mergeRefs = useCallback(
+    (node: HTMLAnchorElement | null) => {
+      anchorRef.current = node;
+      setNodeRef(node);
+    },
+    [setNodeRef],
+  );
+
+  useEffect(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const handler = () => {
+      justDraggedRef.current = true;
+      setTimeout(() => { justDraggedRef.current = false; }, 100);
+    };
+    el.addEventListener('pointerup', handler, { capture: true });
+    return () => el.removeEventListener('pointerup', handler, { capture: true });
+  }, [justDraggedRef]);
+
   return (
     <a
-      ref={setNodeRef}
+      ref={mergeRefs}
       style={style}
       draggable={false}
       {...attributes}
       {...listeners}
       href={`/tickets/${ticket.id}`}
       className="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"
-      onMouseDown={() => { justDraggedRef.current = true; }}
       onClick={(e) => { if (justDraggedRef.current) e.preventDefault(); }}
     >
       <div className="flex items-center justify-between mb-1">
@@ -306,6 +326,9 @@ export default function Board() {
   );
 
   function handleDragEnd(event: DragEndEvent) {
+    justDraggedRef.current = true;
+    window.setTimeout(() => { justDraggedRef.current = false; }, 100);
+
     const { active, over } = event;
     if (!over) return;
 
@@ -318,9 +341,6 @@ export default function Board() {
     if (draggedTicket && draggedTicket.state === newState) return;
 
     updateState.mutate({ ticketId, newState });
-
-    justDraggedRef.current = true;
-    window.setTimeout(() => { justDraggedRef.current = false; }, 100);
   }
 
   // No teams at all
