@@ -2,14 +2,14 @@ import { type FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
 import { Pool } from 'pg';
-import { signupSchema, verifySchema, resendSchema, loginSchema, createTeamSchema, renameTeamSchema, createEpicSchema, editEpicSchema, createTicketSchema, editTicketSchema, boardFiltersSchema } from '@kickit/shared';
+import { signupSchema, verifySchema, resendSchema, loginSchema, createTeamSchema, renameTeamSchema, createEpicSchema, editEpicSchema, createTicketSchema, editTicketSchema, addCommentSchema, boardFiltersSchema } from '@kickit/shared';
 import { signup, verifyToken, resendVerification, verifyPassword } from './services/auth.ts';
 import { createSession, deleteSession } from './services/session.ts';
 import { requireSession } from './plugins/session.ts';
 import { users, teams, epics, tickets } from './db/schema.ts';
 import { listTeams, createTeam, renameTeam, checkDeleteTeam } from './services/team.ts';
 import { listEpics, createEpic, editEpic, checkDeleteEpic, findTeamById, listTeams as listEpicTeams } from './services/epic.ts';
-import { listTickets, createTicket, getTicket, editTicket, deleteTicket } from './services/ticket.ts';
+import { listTickets, createTicket, getTicket, editTicket, deleteTicket, addComment } from './services/ticket.ts';
 
 export default async function routes(app: FastifyInstance) {
   app.get('/health', async () => {
@@ -620,6 +620,43 @@ export default async function routes(app: FastifyInstance) {
       }
 
       return reply.code(200).send({ ticket: result.ticket, comments: result.comments });
+    } finally {
+      await pool.end();
+    }
+  });
+
+  app.post('/tickets/:id/comments', async (request, reply) => {
+    await requireSession(request, reply);
+    if (request.user === null) return;
+
+    const ticketId = (request.params as Record<string, string>).id;
+
+    const parseResult = addCommentSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      const details = parseResult.error.errors.map((e) => ({
+        field: e.path.filter((p): p is string => typeof p === 'string').join('.'),
+        message: e.message,
+      }));
+      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details } });
+    }
+
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+    }
+
+    const pool = new Pool({ connectionString: url });
+    const db = drizzle(pool);
+
+    try {
+      // Verify ticket exists
+      const existing = await db.select({ id: tickets.id }).from(tickets).where(eq(tickets.id, ticketId)).limit(1).then((r) => r[0]);
+      if (!existing) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Ticket not found' } });
+      }
+
+      const comment = await addComment(db, ticketId, request.user.id, parseResult.data.body);
+      return reply.code(201).send(comment);
     } finally {
       await pool.end();
     }

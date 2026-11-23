@@ -65,6 +65,8 @@ export default function TicketDetail() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({});
   const [noChanges, setNoChanges] = useState(false);
+  const [commentBody, setCommentBody] = useState('');
+  const [commentApiError, setCommentApiError] = useState<string | null>(null);
 
   const { data: ticket, isLoading } = useQuery({
     queryKey: ['ticket', id],
@@ -159,6 +161,30 @@ export default function TicketDetail() {
     },
   });
 
+  const commentMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/tickets/${id}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body: commentBody }),
+      });
+      if (!res.ok) {
+        const bodyData = await res.json();
+        if (bodyData.error?.details) {
+          setCommentApiError(bodyData.error.details[0]?.message ?? bodyData.error.message);
+        } else {
+          setCommentApiError(bodyData.error?.message ?? 'Failed to add comment');
+        }
+        throw new Error(bodyData.error?.message ?? 'Failed to add comment');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ticket', id] });
+      setCommentBody('');
+      setCommentApiError(null);
+    },
+  });
+
   function handleEdit(e: FormEvent) {
     e.preventDefault();
     setEditApiError(null);
@@ -178,6 +204,12 @@ export default function TicketDetail() {
     setEditApiError(null);
     setEditFieldErrors({});
     setNoChanges(false);
+  }
+
+  function handleComment(e: FormEvent) {
+    e.preventDefault();
+    setCommentApiError(null);
+    commentMutation.mutate();
   }
 
   if (isLoading) return <div className="min-h-screen bg-gray-100 flex items-center justify-center"><p className="text-gray-600">Loading...</p></div>;
@@ -326,13 +358,13 @@ export default function TicketDetail() {
           </div>
         )}
 
-        {/* Comments placeholder */}
+        {/* Comments */}
         <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-lg font-semibold mb-4">Comments</h2>
           {ticket.comments.length === 0 ? (
             <p className="text-gray-500 text-sm">No comments yet.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 mb-4">
               {ticket.comments.map((c) => (
                 <div key={c.id} className="border-b pb-3 last:border-b-0">
                   <div className="text-sm text-gray-500 mb-1">{c.authorEmail} · {formatDate(c.createdAt)}</div>
@@ -341,6 +373,25 @@ export default function TicketDetail() {
               ))}
             </div>
           )}
+          <form onSubmit={handleComment} className="space-y-3">
+            <textarea
+              value={commentBody}
+              onChange={(e) => setCommentBody(e.target.value)}
+              placeholder="Add a comment..."
+              rows={3}
+              className="border rounded px-3 py-2 text-sm w-full border-gray-300"
+            />
+            {commentApiError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded p-3 text-sm">{commentApiError}</div>
+            )}
+            <button
+              type="submit"
+              disabled={commentMutation.isPending}
+              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            >
+              {commentMutation.isPending ? 'Adding...' : 'Add comment'}
+            </button>
+          </form>
         </div>
       </div>
     </div>

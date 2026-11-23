@@ -89,6 +89,12 @@ export type EditTicketInput = z.infer<typeof editTicketSchema>;
 
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export const addCommentSchema = z.object({
+  body: z.string().transform((s) => s.trim()).refine((s) => s.length >= 1, { message: 'Comment body is required' }),
+});
+
+export type AddCommentInput = z.infer<typeof addCommentSchema>;
+
 export const boardFiltersSchema = z.object({
   type: ticketTypeEnum.optional(),
   epic: z.union([z.literal('none'), z.string().refine((s) => uuidRegex.test(s), { message: 'Invalid epic ID' })]).optional(),
