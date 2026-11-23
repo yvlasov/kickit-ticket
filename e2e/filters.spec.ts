@@ -72,7 +72,6 @@ test.describe('Filters', () => {
     expect(page.url()).toContain('type=bug');
 
     // Apply epic filter = Filter Epic A (nth(2) = FilterBar epic select)
-    // Native <select> options are not "visible" in Playwright terms, so just select directly
     const epicSelect = page.locator('select').nth(2);
     await epicSelect.selectOption(epicA);
     await page.waitForTimeout(500);
@@ -99,12 +98,18 @@ test.describe('Filters', () => {
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
-    // Verify filters persisted
+    // Verify filters persisted in URL
     expect(page.url()).toContain('type=bug');
     expect(page.url()).toContain('epic=');
     expect(page.url()).toContain('q=One');
 
-    const afterReloadCount = await cards.count();
+    // Wait for cards to re-render after reload
+    let afterReloadCount = 0;
+    for (let i = 0; i < 20; i++) {
+      afterReloadCount = await cards.count();
+      if (afterReloadCount > 0) break;
+      await page.waitForTimeout(500);
+    }
     expect(afterReloadCount).toBe(searchCount);
 
     // Go back — previous filter state should be restored
