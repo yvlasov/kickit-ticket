@@ -150,6 +150,17 @@ function DraggableCard({
     return () => el.removeEventListener('pointerup', handler, { capture: true });
   }, [justDraggedRef]);
 
+  // Document-level click capture to prevent anchor navigation after drag
+  useEffect(() => {
+    const clickHandler = (e: MouseEvent) => {
+      if (justDraggedRef.current && e.target instanceof HTMLAnchorElement) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('click', clickHandler, { capture: true });
+    return () => document.removeEventListener('click', clickHandler, { capture: true });
+  }, [justDraggedRef]);
+
   return (
     <a
       ref={mergeRefs}
