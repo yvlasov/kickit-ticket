@@ -13,7 +13,7 @@ function columnLocator(page: any, heading: string) {
 }
 
 test.describe('Drag rollback diagnostics', () => {
-  test('check rollback state after drag', async ({ page }) => {
+  test('check if pointerup capture suppresses click', async ({ page }) => {
     const email = uniqueEmail();
     const password = 'E2Etest123';
     const teamName = uniqueTeamName();
@@ -84,16 +84,12 @@ test.describe('Drag rollback diagnostics', () => {
     const ipCards = await inProgressCol.locator('a[href^="/tickets/"]').count().catch(() => 0);
     console.log(`New: ${newCards}, In progress: ${ipCards}`);
 
-    // Check all text on page
+    // Check toast
     const pageText = await page.textContent('body');
     const hasToast = pageText?.includes('Could not move ticket') ?? false;
     console.log(`Toast visible: ${hasToast}`);
 
-    // Check card titles
-    const allCardTitles = await page.locator('a[href^="/tickets/"]').allTextContents();
-    console.log('All card titles:', allCardTitles);
-
-    await page.screenshot({ path: '/tmp/drag-diag-rollback.png', fullPage: true });
+    await page.screenshot({ path: '/tmp/drag-diag-pointerup.png', fullPage: true });
 
     expect(true).toBe(true);
 
