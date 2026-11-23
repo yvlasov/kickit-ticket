@@ -34,9 +34,28 @@ export const renameTeamSchema = z.object({
   name: z.string().transform((s) => s.trim()).refine((s) => s.length >= 1, { message: 'Team name is required' }),
 });
 
+export const createEpicSchema = z.object({
+  teamId: z.string().refine((s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s), { message: 'Invalid team ID' }),
+  title: z.string().transform((s) => s.trim()).refine((s) => s.length >= 1, { message: 'Title is required' }),
+  description: z.string().transform((s) => {
+    const trimmed = s.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  }).optional().nullable(),
+});
+
+export const editEpicSchema = z.object({
+  title: z.string().transform((s) => s.trim()).refine((s) => s.length >= 1, { message: 'Title is required' }),
+  description: z.string().transform((s) => {
+    const trimmed = s.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  }).optional().nullable(),
+});
+
 export type SignupInput = z.infer<typeof signupSchema>;
 export type VerifyInput = z.infer<typeof verifySchema>;
 export type ResendInput = z.infer<typeof resendSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;
 export type RenameTeamInput = z.infer<typeof renameTeamSchema>;
+export type CreateEpicInput = z.infer<typeof createEpicSchema>;
+export type EditEpicInput = z.infer<typeof editEpicSchema>;
