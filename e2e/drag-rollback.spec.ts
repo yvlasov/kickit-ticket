@@ -42,18 +42,13 @@ test.describe('Drag rollback', () => {
     const card = newCol.locator('a[href^="/tickets/"]').first();
     await expect(card).toBeVisible({ timeout: 10000 });
 
-    // Track all requests and responses
-    const allRequests: Array<{ url: string; method: string }> = [];
-    const allResponses: Array<{ url: string; status: number }> = [];
-    page.on('request', (req) => {
-      if (req.url().includes('/api/tickets/')) {
-        allRequests.push({ url: req.url(), method: req.method() });
-      }
-    });
-    page.on('response', (resp) => {
-      if (resp.url().includes('/api/tickets/')) {
-        allResponses.push({ url: resp.url(), status: resp.status() });
-      }
+    // Block navigation to ticket detail (keeps Board mounted so toast is visible)
+    await page.route(`http://app:3000/tickets/${ticketId}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        body: '<html><body><h1>Ticket</h1></body></html>',
+        contentType: 'text/html',
+      });
     });
 
     // Route PATCH requests to return 500
@@ -80,37 +75,22 @@ test.describe('Drag rollback', () => {
     await page.mouse.move(colBox.x + colBox.width / 2, colBox.y + colBox.height / 2, { steps: 15 });
     await page.mouse.up();
 
-    // Wait for optimistic update + PATCH to settle
+    // Wait for optimistic update + PATCH to settle (onMutate → PATCH → onError)
     await page.waitForTimeout(3000);
 
-    console.log('All PATCH requests:', JSON.stringify(allRequests.filter(r => r.method === 'PATCH')));
-    console.log('All PATCH responses:', JSON.stringify(allResponses.filter(r => r.url.includes(ticketId))));
-
-    // The <a> click navigated to ticket detail — go back to board
-    try {
-      await page.goBack();
-      await page.waitForTimeout(500);
-    } catch {
-      // Already on board
-    }
-
-    // Re-navigate to board to ensure clean state
-    await page.goto(`/board?teamId=${teamId}`);
-    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
-
-    // (b) Card snapped back to original column (PATCH failed, DB unchanged)
+    // (a) Optimistic update: card appeared in target column then snapped back
+    // (b) Snap-back: card in original column
     const newColCardsAfterRollback = newCol.locator('a[href^="/tickets/"]');
     await expect(newColCardsAfterRollback.first()).toBeVisible();
+
+    // (c) Error toast visible
+    await expect(page.getByText(/Could not move ticket/i)).toBeVisible({ timeout: 5000 });
 
     // (d) Target column has no card
     const inProgressCardsAfterRollback = inProgressCol.locator('a[href^="/tickets/"]');
     expect(await inProgressCardsAfterRollback.count()).toBe(0);
 
-    // (c) Error toast — check via PATCH response status
-    const patchResp = allResponses.find(r => r.url.includes(ticketId));
-    expect(patchResp).toBeDefined();
-    expect(patchResp!.status).toBe(500);
-
+    await page.unroute(`http://app:3000/tickets/${ticketId}`);
     await page.unroute(`**/api/tickets/${ticketId}`);
   });
 });
