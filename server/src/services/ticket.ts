@@ -21,6 +21,7 @@ export interface TicketRow {
 
 export interface CommentRow {
   id: string;
+  ticketId: string;
   body: string;
   authorId: string;
   authorEmail: string;
@@ -152,6 +153,7 @@ export async function getTicket(
   const rawComments = await db
     .select({
       id: comments.id,
+      ticketId: comments.ticketId,
       body: comments.body,
       authorId: comments.authorId,
       authorEmail: users.email,
@@ -164,6 +166,7 @@ export async function getTicket(
 
   const resultComments: Array<CommentRow> = rawComments.map((c) => ({
     ...c,
+    ticketId: (c.ticketId as string),
     authorEmail: (c.authorEmail as string) ?? '',
   }));
 
@@ -297,4 +300,39 @@ export async function deleteTicket(
 ): Promise<boolean> {
   await db.delete(tickets).where(eq(tickets.id, ticketId));
   return true;
+}
+
+export async function addComment(
+  db: ReturnType<typeof drizzle>,
+  ticketId: string,
+  authorId: string,
+  body: string,
+): Promise<CommentRow> {
+  const row = await db
+    .insert(comments)
+    .values({ ticketId, authorId, body } as typeof comments.$inferInsert)
+    .returning({
+      id: comments.id,
+      ticketId: comments.ticketId,
+      body: comments.body,
+      authorId: comments.authorId,
+      createdAt: comments.createdAt,
+    })
+    .then((r) => r[0]);
+
+  const authorRow = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, authorId))
+    .limit(1)
+    .then((r) => r[0]);
+
+  return {
+    id: row.id,
+    ticketId,
+    body: row.body,
+    authorId: row.authorId,
+    authorEmail: (authorRow?.email as string) ?? '',
+    createdAt: row.createdAt,
+  };
 }
