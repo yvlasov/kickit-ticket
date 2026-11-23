@@ -1,0 +1,24 @@
+FROM mcr.microsoft.com/playwright:noble
+
+WORKDIR /app
+
+# Copy root and workspace package files
+COPY package.json package-lock.json* ./
+COPY shared/package.json shared/
+COPY web/package.json web/
+COPY shared/tsconfig.json shared/
+COPY web/tsconfig.json web/
+
+RUN npm ci --ignore-scripts
+
+# Copy shared source (needed for @kickit/shared imports in demo script)
+COPY shared/src/ shared/src/
+
+# Copy playwright config and e2e tests
+COPY playwright.config.* .
+COPY e2e/ e2e/
+
+# Copy demo script (needs tsx from shared dependencies)
+COPY scripts/ scripts/
+
+CMD ["npx", "playwright", "test"]

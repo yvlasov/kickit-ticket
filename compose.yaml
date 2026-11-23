@@ -73,5 +73,17 @@ services:
     profiles:
       - test
 
+  tests-e2e:
+    build:
+      context: .
+      dockerfile: compose/Dockerfile.tests-e2e
+    environment:
+      BASE_URL: http://app:3000
+      MAILPIT_URL: http://mailpit:8025
+    depends_on:
+      - app
+    profiles:
+      - test
+
 volumes:
   pgdata:
