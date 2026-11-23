@@ -310,6 +310,18 @@ export default async function routes(app: FastifyInstance) {
     const db = drizzle(pool);
 
     try {
+      // Verify team exists before checking counts
+      const existing = await db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1)
+        .then((rows) => rows[0]);
+
+      if (!existing) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Team not found' } });
+      }
+
       const counts = await checkDeleteTeam(db, teamId);
 
       if (counts.hasTickets > 0 || counts.hasEpics > 0) {

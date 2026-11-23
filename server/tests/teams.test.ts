@@ -359,4 +359,13 @@ describe('Teams API — CRUD', () => {
     // This should fail with 403
     expect(loginUnverified.statusCode).toBe(403);
   });
+
+  // --- Test 10: DELETE unknown id → 404 ---
+  it('DELETE /api/teams/:id unknown UUID returns 404', async () => {
+    const { cookie } = await signupAndVerify(app, pool, 'team-user10@example.com', 'password123');
+
+    const res = await apiRequest(app, 'DELETE', '/api/teams/00000000-0000-0000-0000-000000000000', undefined, cookie);
+    expect(res.statusCode).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
 });
