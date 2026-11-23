@@ -75,7 +75,7 @@ export async function createTicket(
 ): Promise<TicketRow> {
   const row = await db
     .insert(tickets)
-    .values({ teamId, type, state, epicId, title, body, createdBy } as any)
+    .values({ teamId, type, state, epicId, title, body, createdBy } as typeof tickets.$inferInsert)
     .returning({
       id: tickets.id,
       teamId: tickets.teamId,
@@ -179,7 +179,7 @@ export async function editTicket(
   newEpicId: string | null | undefined,
   newTitle: string | undefined,
   newBody: string | null | undefined,
-  newState: string | undefined,
+  newState: 'new' | 'ready_for_implementation' | 'in_progress' | 'ready_for_acceptance' | 'done' | undefined,
 ): Promise<TicketRow | null> {
   const current = await db
     .select({
@@ -241,7 +241,7 @@ export async function editTicket(
   }
 
   // Build update set
-  const updateSet: Record<string, unknown> = {};
+  const updateSet: Partial<typeof tickets.$inferInsert> = {};
   if (newType !== undefined) updateSet.type = newType;
   if (normalizedTeamId !== undefined) updateSet.teamId = normalizedTeamId;
   if (normalizedEpicId !== undefined) updateSet.epicId = normalizedEpicId;
@@ -252,7 +252,7 @@ export async function editTicket(
 
   const row = await db
     .update(tickets)
-    .set(updateSet as Record<string, unknown>)
+    .set(updateSet)
     .where(eq(tickets.id, ticketId))
     .returning({
       id: tickets.id,

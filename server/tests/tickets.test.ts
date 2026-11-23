@@ -473,6 +473,30 @@ describe('Tickets API — CRUD & modified-at semantics', () => {
     expect(getRes.body.error.code).toBe('NOT_FOUND');
   });
 
+  it('PATCH /api/tickets/:id with unknown teamId → 400, ticket unchanged', async () => {
+    const { cookie } = await signupAndVerify(app, pool, 'ticket-fix1@example.com', 'password123');
+    const teamRes = await apiRequest(app, 'POST', '/api/teams', { name: 'Fix Team' }, cookie);
+    const createRes = await apiRequest(app, 'POST', '/api/tickets', {
+      teamId: teamRes.body.id, type: 'bug', title: 'T', body: 'B',
+    }, cookie);
+    const ticketId = createRes.body.id;
+    const originalModifiedAt = createRes.body.modifiedAt;
+    const originalTeamId = createRes.body.teamId;
+
+    // PATCH with random-UUID teamId
+    const editRes = await apiRequest(app, 'PATCH', `/api/tickets/${ticketId}`, {
+      teamId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    }, cookie);
+    expect(editRes.statusCode).toBe(400);
+    expect(editRes.body.error.code).toBe('VALIDATION_ERROR');
+
+    // Verify ticket unchanged
+    const getRes = await apiRequest(app, 'GET', `/api/tickets/${ticketId}`, undefined, cookie);
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.body.ticket.teamId).toBe(originalTeamId);
+    expect(getRes.body.ticket.modifiedAt).toBe(originalModifiedAt);
+  });
+
   // === Test 8: all endpoints without cookie → 401 ===
   it('GET /api/tickets returns 401 without cookie', async () => {
     const res = await apiRequest(app, 'GET', '/api/tickets');

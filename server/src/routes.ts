@@ -656,6 +656,14 @@ export default async function routes(app: FastifyInstance) {
         }
       }
 
+      // Validate new team exists if provided
+      if (newTeamId !== undefined) {
+        const newTeam = await findTeamById(db, newTeamId);
+        if (!newTeam) {
+          return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Unknown teamId' } });
+        }
+      }
+
       // Team change rules: if team changes and epicId not supplied, auto-null epic
       const effectiveEpicId = (newTeamId !== undefined && newTeamId !== existing.teamId && newEpicId === undefined) ? null : newEpicId;
 
