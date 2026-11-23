@@ -142,12 +142,19 @@ function DraggableCard({
   useEffect(() => {
     const el = anchorRef.current;
     if (!el) return;
-    const handler = () => {
+    const pointerUpHandler = () => {
       justDraggedRef.current = true;
       setTimeout(() => { justDraggedRef.current = false; }, 100);
     };
-    el.addEventListener('pointerup', handler, { capture: true });
-    return () => el.removeEventListener('pointerup', handler, { capture: true });
+    el.addEventListener('pointerup', pointerUpHandler, { capture: true });
+    const clickHandler = (e: Event) => {
+      if (justDraggedRef.current) e.preventDefault();
+    };
+    el.addEventListener('click', clickHandler, { capture: true });
+    return () => {
+      el.removeEventListener('pointerup', pointerUpHandler, { capture: true });
+      el.removeEventListener('click', clickHandler, { capture: true });
+    };
   }, [justDraggedRef]);
 
   return (
