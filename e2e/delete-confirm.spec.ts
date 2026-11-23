@@ -38,20 +38,35 @@ test.describe('Delete confirmation', () => {
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
 
     // First delete click — dismiss
+    let dialog1Resolved: any = null;
+    const dialogPromise1 = new Promise<void>((resolve) => {
+      const handler = (d: any) => {
+        dialog1Resolved = d;
+        resolve();
+      };
+      page.on('dialog', handler);
+    });
     await page.getByRole('button', { name: 'Delete' }).click();
-    const dialog1 = await page.waitForEvent('dialog', { timeout: 5000 });
-    await dialog1.dismiss();
+    await dialogPromise1;
+    await dialog1Resolved.dismiss();
 
     // Ticket still present after dismiss
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
 
     // Second delete click — accept
+    let dialog2Resolved: any = null;
+    const dialogPromise2 = new Promise<void>((resolve) => {
+      const handler = (d: any) => {
+        dialog2Resolved = d;
+        resolve();
+      };
+      page.on('dialog', handler);
+    });
     await page.getByRole('button', { name: 'Delete' }).click();
-    const dialog2 = await page.waitForEvent('dialog', { timeout: 5000 });
-    await dialog2.accept();
+    await dialogPromise2;
+    await dialog2Resolved.accept();
 
     // After accept, deleteMutation.onSuccess navigates to /tickets?teamId=...
-    // Wait for URL to change away from ticket detail
     await expect(page).toHaveURL(/\/tickets\?teamId=/, { timeout: 10000 });
 
     // Verify deleted ticket is not in the list

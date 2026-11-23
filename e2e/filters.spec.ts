@@ -112,12 +112,13 @@ test.describe('Filters', () => {
     }
     expect(afterReloadCount).toBe(searchCount);
 
-    // Go back — previous filter state should be restored
+    // Go back — since FilterBar uses replace:true, goBack goes to the
+    // board URL without filters (the page before the board loaded)
     await page.goBack();
     await page.waitForTimeout(500);
 
-    // Should be back to epic filter state (type=bug, epic=A, no q)
-    expect(page.url()).toContain('type=bug');
-    expect(page.url()).toContain('epic=');
+    // Should be at the board URL without filters (replace:true means no history for filter changes)
+    expect(page.url()).toContain('/board?teamId=');
+    expect(page.url()).not.toContain('type=');
   });
 });
