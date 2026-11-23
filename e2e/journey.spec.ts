@@ -97,7 +97,7 @@ test.describe('Full UI journey', () => {
     // Wait for cards to appear
     const newCol = columnLocator(page, 'New');
     const inProgressCol = columnLocator(page, 'In progress');
-    const card = newCol.locator('a[href^="/tickets/"]').first();
+    const card = newCol.locator('a').first();
     await expect(card).toBeVisible({ timeout: 10000 });
 
     const cardBox = await card.boundingBox();
@@ -135,7 +135,7 @@ test.describe('Full UI journey', () => {
 
     // Restore href
     if (cardHref) {
-      await card.evaluate((el: HTMLElement, href: string) => {
+      await newCol.locator('a').evaluate((el: HTMLElement, href: string) => {
         (el as HTMLAnchorElement).setAttribute('href', href);
       }, cardHref);
     }
