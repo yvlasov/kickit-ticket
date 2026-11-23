@@ -35,6 +35,24 @@ export interface GroupedTickets {
 }
 
 /**
+ * Returns a new array with the ticket's state replaced.
+ * If the ticket is not found or the state is unchanged, returns the original array.
+ */
+export function moveTicketState(
+  tickets: Array<TicketRow>,
+  ticketId: string,
+  newState: string,
+): Array<TicketRow> {
+  const current = tickets.find((t) => t.id === ticketId);
+  if (!current || current.state === newState) {
+    return tickets;
+  }
+  return tickets.map((t) =>
+    t.id === ticketId ? { ...t, state: newState } : t,
+  );
+}
+
+/**
  * Groups a flat list of tickets by their `state`, preserving the API
  * ordering (modifiedAt DESC, id DESC) within each column.
  * Always returns all five state keys, even when empty.
