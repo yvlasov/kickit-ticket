@@ -12,6 +12,7 @@ import Epics from './pages/Epics';
 import Tickets from './pages/Tickets';
 import TicketNew from './pages/TicketNew';
 import TicketDetail from './pages/TicketDetail';
+import Board from './pages/Board';
 import AppShell from './components/AppShell';
 import { queryClient, handleUnauthorized } from './api';
 
@@ -43,6 +44,14 @@ function App() {
         element={
           <ProtectedRoute>
             <Home />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/board"
+        element={
+          <ProtectedRoute>
+            <Board />
           </ProtectedRoute>
         }
       />
