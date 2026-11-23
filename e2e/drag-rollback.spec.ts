@@ -39,14 +39,8 @@ test.describe('Drag rollback', () => {
 
     const newCol = columnLocator(page, 'New');
     const inProgressCol = columnLocator(page, 'In progress');
-    const card = newCol.locator('a').first();
+    const card = newCol.locator('a[href^="/tickets/"]').first();
     await expect(card).toBeVisible({ timeout: 10000 });
-
-    // Prevent navigation: remove href temporarily
-    const cardHref = await card.getAttribute('href');
-    await card.evaluate((el: HTMLElement) => {
-      (el as HTMLAnchorElement).removeAttribute('href');
-    });
 
     // Route PATCH requests to return 500
     await page.route(`**/api/tickets/${ticketId}`, async (route) => {
@@ -66,6 +60,7 @@ test.describe('Drag rollback', () => {
     expect(colBox).toBeTruthy();
 
     // REAL DRAG using page.mouse
+    // draggable={false} on <a> prevents native anchor drag; dnd-kit PointerSensor activates.
     await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
     await page.mouse.down();
     await page.mouse.move(cardBox.x + cardBox.width / 2 + 20, cardBox.y + cardBox.height / 2, { steps: 5 });
@@ -77,22 +72,15 @@ test.describe('Drag rollback', () => {
 
     // (a) Optimistic update: card appeared in target column then snapped back
     // (b) Snap-back: card in original column
-    const newColCardsAfterRollback = newCol.locator('a');
+    const newColCardsAfterRollback = newCol.locator('a[href^="/tickets/"]');
     await expect(newColCardsAfterRollback.first()).toBeVisible();
 
     // (c) Error toast visible
     await expect(page.getByText(/Could not move ticket/i)).toBeVisible({ timeout: 5000 });
 
     // (d) Target column has no card
-    const inProgressCardsAfterRollback = inProgressCol.locator('a');
+    const inProgressCardsAfterRollback = inProgressCol.locator('a[href^="/tickets/"]');
     expect(await inProgressCardsAfterRollback.count()).toBe(0);
-
-    // Restore href
-    if (cardHref) {
-      await card.evaluate((el: HTMLElement, href: string) => {
-        (el as HTMLAnchorElement).setAttribute('href', href);
-      }, cardHref);
-    }
 
     await page.unroute(`**/api/tickets/${ticketId}`);
   });

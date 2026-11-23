@@ -97,7 +97,7 @@ test.describe('Full UI journey', () => {
     // Wait for cards to appear
     const newCol = columnLocator(page, 'New');
     const inProgressCol = columnLocator(page, 'In progress');
-    const card = newCol.locator('a').first();
+    const card = newCol.locator('a[href^="/tickets/"]').first();
     await expect(card).toBeVisible({ timeout: 10000 });
 
     const cardBox = await card.boundingBox();
@@ -105,13 +105,8 @@ test.describe('Full UI journey', () => {
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    // Remove href to prevent <a> click from navigating during drag
-    const cardHref = await card.getAttribute('href');
-    await card.evaluate((el: HTMLElement) => {
-      (el as HTMLAnchorElement).removeAttribute('href');
-    });
-
     // REAL DRAG using page.mouse (CDP Input.dispatchMouseEvent fires trusted pointer events)
+    // draggable={false} on <a> prevents native anchor drag; dnd-kit PointerSensor activates.
     // Step 1: move to card center
     await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
     // Step 2: press down
@@ -127,7 +122,7 @@ test.describe('Full UI journey', () => {
     await page.waitForTimeout(2000);
 
     // 12. Assert the card now appears in the In-progress column
-    const inProgressCards = inProgressCol.locator('a');
+    const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
     await expect(inProgressCards.first()).toBeVisible({ timeout: 5000 });
 
     // Verify the card title is visible
