@@ -2,7 +2,7 @@ import { type FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
 import { Pool } from 'pg';
-import { signupSchema, verifySchema, resendSchema, loginSchema, createTeamSchema, renameTeamSchema, createEpicSchema, editEpicSchema, createTicketSchema, editTicketSchema } from '@kickit/shared';
+import { signupSchema, verifySchema, resendSchema, loginSchema, createTeamSchema, renameTeamSchema, createEpicSchema, editEpicSchema, createTicketSchema, editTicketSchema, boardFiltersSchema } from '@kickit/shared';
 import { signup, verifyToken, resendVerification, verifyPassword } from './services/auth.ts';
 import { createSession, deleteSession } from './services/session.ts';
 import { requireSession } from './plugins/session.ts';
@@ -509,6 +509,9 @@ export default async function routes(app: FastifyInstance) {
 
     const searchParams = new URL(request.url, `http://${request.headers.host}`).searchParams;
     const teamId = searchParams.get('teamId');
+    const type = searchParams.get('type');
+    const epic = searchParams.get('epic');
+    const q = searchParams.get('q');
 
     if (!teamId) {
       return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'teamId query parameter is required' } });
@@ -534,7 +537,14 @@ export default async function routes(app: FastifyInstance) {
         return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Unknown teamId' } });
       }
 
-      const tickets = await listTickets(db, teamId);
+      // Validate filters
+      const filterResult = boardFiltersSchema.safeParse({ type: type ?? undefined, epic: epic ?? undefined, q: q ?? undefined });
+      if (!filterResult.success) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid filter parameter', details: filterResult.error.errors.map((e: { path: Array<unknown>; message: string }) => ({ field: e.path.join('.'), message: e.message })) } });
+      }
+
+      const filters = filterResult.data;
+      const tickets = await listTickets(db, teamId, filters);
       return reply.code(200).send(tickets);
     } finally {
       await pool.end();

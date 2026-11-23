@@ -86,3 +86,13 @@ export type CreateEpicInput = z.infer<typeof createEpicSchema>;
 export type EditEpicInput = z.infer<typeof editEpicSchema>;
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
 export type EditTicketInput = z.infer<typeof editTicketSchema>;
+
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const boardFiltersSchema = z.object({
+  type: ticketTypeEnum.optional(),
+  epic: z.union([z.literal('none'), z.string().refine((s) => uuidRegex.test(s), { message: 'Invalid epic ID' })]).optional(),
+  q: z.string().optional(),
+});
+
+export type BoardFilters = z.infer<typeof boardFiltersSchema>;

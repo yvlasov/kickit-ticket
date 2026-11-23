@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { tickets, teams, users, epics, comments } from '../db/schema.ts';
 
@@ -27,10 +27,36 @@ export interface CommentRow {
   createdAt: Date;
 }
 
+export interface ListTicketsFilters {
+  type?: string;
+  epic?: 'none' | string;
+  q?: string;
+}
+
 export async function listTickets(
   db: ReturnType<typeof drizzle>,
   teamId: string,
+  filters?: ListTicketsFilters,
 ): Promise<Array<TicketRow>> {
+  const conditions: Array<SQL> = [eq(tickets.teamId, teamId)];
+
+  if (filters?.type !== undefined) {
+    conditions.push(eq(tickets.type, filters.type));
+  }
+
+  if (filters?.epic !== undefined) {
+    if (filters.epic === 'none') {
+      conditions.push(sql`${tickets.epicId} IS NULL`);
+    } else {
+      conditions.push(eq(tickets.epicId, filters.epic));
+    }
+  }
+
+  if (filters?.q !== undefined && filters.q.length > 0) {
+    const escaped = filters.q.replace(/([%_\\])/g, '\\$1');
+    conditions.push(sql`LOWER(${tickets.title}) LIKE LOWER(${`%${escaped}%`}) ESCAPE '\\'`);
+  }
+
   const rows = await db
     .select({
       id: tickets.id,
@@ -51,7 +77,7 @@ export async function listTickets(
     .leftJoin(teams, eq(teams.id, tickets.teamId))
     .leftJoin(users, eq(users.id, tickets.createdBy))
     .leftJoin(epics, eq(epics.id, tickets.epicId))
-    .where(eq(tickets.teamId, teamId))
+    .where(and(...conditions))
     .orderBy(sql`${tickets.modifiedAt} DESC, ${tickets.id} DESC`);
 
   return rows.map((r) => ({

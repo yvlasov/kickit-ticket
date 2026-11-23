@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useCallback, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router';
 import { apiFetch, handleUnauthorized } from '../api';
@@ -8,10 +8,17 @@ import {
   STATE_LABELS,
   type TicketRow,
 } from '../utils/board';
+import { ticketQueryKey, type BoardFilters } from '../utils/queryKeys';
+import FilterBar from '../components/FilterBar';
 
 interface TeamRow {
   id: string;
   name: string;
+}
+
+interface EpicOption {
+  id: string;
+  title: string;
 }
 
 function useTeams() {
@@ -32,11 +39,11 @@ function useTeams() {
   });
 }
 
-function useTeamTickets(teamId: string) {
+function useTeamEpics(teamId: string) {
   return useQuery({
-    queryKey: ['team-tickets', teamId],
+    queryKey: ['team-epics', teamId],
     queryFn: async () => {
-      const res = await apiFetch(`/api/tickets?teamId=${teamId}`, {
+      const res = await apiFetch(`/api/epics?teamId=${teamId}`, {
         method: 'GET',
       });
       if (res.status === 401) {
@@ -44,13 +51,21 @@ function useTeamTickets(teamId: string) {
         throw new Error('Unauthorized');
       }
       if (!res.ok) {
-        throw new Error('Failed to fetch tickets');
+        throw new Error('Failed to fetch epics');
       }
-      return res.json() as Promise<Array<TicketRow>>;
+      return res.json() as Promise<Array<EpicOption>>;
     },
     enabled: !!teamId,
     retry: false,
   });
+}
+
+function buildQuery(filters: BoardFilters): string {
+  const parts: Array<string> = [];
+  if (filters.type) parts.push(`type=${encodeURIComponent(filters.type)}`);
+  if (filters.epic) parts.push(`epic=${encodeURIComponent(filters.epic)}`);
+  if (filters.q) parts.push(`q=${encodeURIComponent(filters.q)}`);
+  return parts.join('&');
 }
 
 function typeBadge(type: string): string {
@@ -149,15 +164,50 @@ export default function Board() {
 
   const selectedTeamId = searchParams.get('teamId') ?? '';
 
+  // Read filters from URL search params
+  const filters: BoardFilters = {
+    type: searchParams.get('type') ?? undefined,
+    epic: searchParams.get('epic') ?? undefined,
+    q: searchParams.get('q') ?? undefined,
+  };
+
+  // Build query string from filters (omit empty values)
+  const queryString = buildQuery(filters);
+
+  const {
+    data: epics,
+    isLoading: epicsLoading,
+  } = useTeamEpics(selectedTeamId);
+
   const {
     data: tickets,
     isLoading: ticketsLoading,
     error: ticketsError,
     refetch,
-  } = useTeamTickets(selectedTeamId);
+  } = useQuery({
+    queryKey: ticketQueryKey(selectedTeamId, filters),
+    queryFn: async () => {
+      const url = queryString
+        ? `/api/tickets?teamId=${selectedTeamId}&${queryString}`
+        : `/api/tickets?teamId=${selectedTeamId}`;
+      const res = await apiFetch(url, {
+        method: 'GET',
+      });
+      if (res.status === 401) {
+        handleUnauthorized();
+        throw new Error('Unauthorized');
+      }
+      if (!res.ok) {
+        throw new Error('Failed to fetch tickets');
+      }
+      return res.json() as Promise<Array<TicketRow>>;
+    },
+    enabled: !!selectedTeamId,
+    retry: false,
+  });
 
   // Auto-select first team when none is selected
-  const autoSelected = useState(false)[1];
+  const [autoSelected] = useState(false);
   const [autoSelectedRef] = useState({ current: false });
 
   if (teamsError) {
@@ -177,6 +227,14 @@ export default function Board() {
     if (newTeamId) {
       setSearchParams({ teamId: newTeamId });
     }
+  }
+
+  function handleFilterChange(newFilters: BoardFilters) {
+    const params: Record<string, string> = { teamId: selectedTeamId };
+    if (newFilters.type) params.type = newFilters.type;
+    if (newFilters.epic) params.epic = newFilters.epic;
+    if (newFilters.q) params.q = newFilters.q;
+    setSearchParams(params, { replace: true });
   }
 
   // No teams at all
@@ -274,6 +332,14 @@ export default function Board() {
             </a>
           </div>
         </div>
+
+        {/* Filters */}
+        <FilterBar
+          filters={filters}
+          onChange={handleFilterChange}
+          teamId={selectedTeamId}
+          epics={epics ?? []}
+        />
 
         {/* Board columns */}
         {teamsLoading || ticketsLoading ? (
