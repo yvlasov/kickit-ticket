@@ -39,7 +39,7 @@ test.describe('Drag rollback', () => {
 
     const newCol = columnLocator(page, 'New');
     const inProgressCol = columnLocator(page, 'In progress');
-    const card = newCol.locator('a[href^="/tickets/"]').first();
+    const card = newCol.locator('a').first();
     await expect(card).toBeVisible({ timeout: 10000 });
 
     // Prevent navigation: remove href temporarily
@@ -77,14 +77,14 @@ test.describe('Drag rollback', () => {
 
     // (a) Optimistic update: card appeared in target column then snapped back
     // (b) Snap-back: card in original column
-    const newColCardsAfterRollback = newCol.locator('a[href^="/tickets/"]');
+    const newColCardsAfterRollback = newCol.locator('a');
     await expect(newColCardsAfterRollback.first()).toBeVisible();
 
     // (c) Error toast visible
     await expect(page.getByText(/Could not move ticket/i)).toBeVisible({ timeout: 5000 });
 
     // (d) Target column has no card
-    const inProgressCardsAfterRollback = inProgressCol.locator('a[href^="/tickets/"]');
+    const inProgressCardsAfterRollback = inProgressCol.locator('a');
     expect(await inProgressCardsAfterRollback.count()).toBe(0);
 
     // Restore href
