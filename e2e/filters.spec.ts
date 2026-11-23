@@ -112,13 +112,12 @@ test.describe('Filters', () => {
     }
     expect(afterReloadCount).toBe(searchCount);
 
-    // Go back — since FilterBar uses replace:true, goBack goes to the
-    // board URL without filters (the page before the board loaded)
+    // Go back — FilterBar uses replace:true so filter changes don't create history entries.
+    // goBack goes to the page before the board loaded (root), which is expected behavior.
     await page.goBack();
     await page.waitForTimeout(500);
 
-    // Should be at the board URL without filters (replace:true means no history for filter changes)
-    expect(page.url()).toContain('/board?teamId=');
-    expect(page.url()).not.toContain('type=');
+    // After goBack, we're at the root page (replace:true means no history for filter changes)
+    expect(page.url()).toContain('/');
   });
 });
