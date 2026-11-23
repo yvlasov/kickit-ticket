@@ -64,6 +64,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <nav className="flex gap-3 text-sm">
               <a href="/" className="text-gray-600 hover:text-gray-900">Teams</a>
               <a href="/epics" className="text-gray-600 hover:text-gray-900">Epics</a>
+              <a href="/tickets" className="text-gray-600 hover:text-gray-900">Tickets</a>
             </nav>
           </div>
           {user && (
