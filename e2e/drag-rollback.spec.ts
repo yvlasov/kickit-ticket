@@ -12,17 +12,8 @@ function columnLocator(page: any, heading: string) {
   return page.locator('h3', { hasText: heading }).first().locator('..');
 }
 
-test.describe('Drag diagnostics with logging', () => {
-  test('capture console logs during drag', async ({ page }) => {
-    const logs: string[] = [];
-    page.on('console', (msg) => {
-      const text = msg.text();
-      if (text.includes('[DraggableCard]') || text.includes('[Board]') || text.includes('onClick') || text.includes('pointerup')) {
-        logs.push(text);
-        console.log('>>> CONSOLE:', text);
-      }
-    });
-
+test.describe('Drag diagnostics', () => {
+  test('onPointerMove flag approach', async ({ page }) => {
     const email = uniqueEmail();
     const password = 'E2Etest123';
     const teamName = uniqueTeamName();
@@ -51,7 +42,6 @@ test.describe('Drag diagnostics with logging', () => {
     const card = newCol.locator('a[href^="/tickets/"]').first();
     await expect(card).toBeVisible({ timeout: 10000 });
 
-    // Track PATCH
     const patchResponses: Array<{ url: string; status: number }> = [];
     page.on('response', async (resp) => {
       if (resp.url().includes('/api/tickets/') && resp.request().method() === 'PATCH') {
@@ -59,7 +49,6 @@ test.describe('Drag diagnostics with logging', () => {
       }
     });
 
-    // Route PATCH to 500
     await page.route(`**/api/tickets/${ticketId}`, async (route) => {
       if (route.request().method() === 'PATCH') {
         await route.fulfill({
@@ -76,24 +65,28 @@ test.describe('Drag diagnostics with logging', () => {
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    console.log('>>> About to drag');
-    // REAL DRAG — no href hack
     await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
     await page.mouse.down();
     await page.mouse.move(cardBox.x + cardBox.width / 2 + 20, cardBox.y + cardBox.height / 2, { steps: 5 });
     await page.mouse.move(colBox.x + colBox.width / 2, colBox.y + colBox.height / 2, { steps: 15 });
     await page.mouse.up();
-    console.log('>>> Drag complete, waiting');
 
     await page.waitForTimeout(3000);
-    console.log('>>> After wait, URL:', page.url());
-    console.log('>>> After wait, PATCH:', JSON.stringify(patchResponses));
 
-    console.log('=== ALL CAPTURED LOGS ===');
-    logs.forEach(l => console.log(l));
-    console.log('=== END LOGS (count:', logs.length, ')===');
+    console.log('URL:', page.url());
+    console.log('PATCH responses:', JSON.stringify(patchResponses));
 
-    await page.unroute(`**/api/tickets/${ticketId}`);
+    const newCards = await newCol.locator('a[href^="/tickets/"]').count().catch(() => 0);
+    const ipCards = await inProgressCol.locator('a[href^="/tickets/"]').count().catch(() => 0);
+    console.log(`New: ${newCards}, In progress: ${ipCards}`);
+
+    const pageText = await page.textContent('body');
+    const hasToast = pageText?.includes('Could not move ticket') ?? false;
+    console.log(`Toast visible: ${hasToast}`);
+
+    await page.screenshot({ path: '/tmp/drag-diag-pointermove.png', fullPage: true });
+
     expect(true).toBe(true);
+    await page.unroute(`**/api/tickets/${ticketId}`);
   });
 });
