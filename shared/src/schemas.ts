@@ -21,6 +21,12 @@ export const resendSchema = z.object({
   email: z.string().transform((s) => s.trim()).refine((s) => z.string().email().safeParse(s).success, { message: 'Invalid email' }),
 });
 
+export const loginSchema = z.object({
+  email: z.string().transform((s) => s.trim()).refine((s) => z.string().email().safeParse(s).success, { message: 'Invalid email' }),
+  password: z.string().min(1),
+});
+
 export type SignupInput = z.infer<typeof signupSchema>;
 export type VerifyInput = z.infer<typeof verifySchema>;
 export type ResendInput = z.infer<typeof resendSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
