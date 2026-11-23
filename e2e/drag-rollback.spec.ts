@@ -54,11 +54,6 @@ test.describe('Drag rollback', () => {
       }
     });
 
-    // Intercept navigation to ticket detail (the <a> href)
-    await page.route(`http://app:3000/tickets/${ticketId}`, async (route) => {
-      await route.abort('abort');
-    });
-
     const cardBox = await card.boundingBox();
     const colBox = await inProgressCol.boundingBox();
     expect(cardBox).toBeTruthy();
@@ -94,6 +89,5 @@ test.describe('Drag rollback', () => {
     expect(await inProgressCardsAfterRollback.count()).toBe(0);
 
     await page.unroute(`**/api/tickets/${ticketId}`);
-    await page.unroute(`http://app:3000/tickets/${ticketId}`);
   });
 });

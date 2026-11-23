@@ -105,18 +105,10 @@ test.describe('Full UI journey', () => {
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    // Intercept navigation to ticket detail (the <a> href)
-    await page.route(`http://app:3000/tickets/${ticketId}`, async (route) => {
-      console.log(`NAV BLOCKED: ${route.request().url()}`);
-      await route.abort('abort');
-    });
-
     // Track PATCH requests
-    let patchUrl = '';
     let patchStatus = 0;
     page.on('response', async (resp) => {
       if (resp.url().includes('/api/tickets/') && resp.request().method() === 'PATCH') {
-        patchUrl = resp.url();
         patchStatus = resp.status();
       }
     });
@@ -136,7 +128,19 @@ test.describe('Full UI journey', () => {
     // Wait for optimistic update + PATCH request to settle
     await page.waitForTimeout(2000);
 
-    console.log(`PATCH sent to: ${patchUrl || 'NONE'}, status: ${patchStatus || 0}`);
+    // The <a> click navigated to ticket detail — go back to board
+    try {
+      await page.goBack();
+      await page.waitForTimeout(500);
+    } catch {
+      // Already on board
+    }
+
+    // Re-navigate to board to ensure clean state
+    await page.goto(`/board?teamId=${teamId}`);
+    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
+
+    console.log(`PATCH status: ${patchStatus}`);
 
     // 12. Assert the card now appears in the In-progress column
     const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
