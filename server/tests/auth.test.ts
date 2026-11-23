@@ -7,25 +7,11 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
+import { fetchMailpitMessages, fetchMailpitMessageById, fetchLatestMailpitMessageFor, extractTokenFromHtml, apiRequest, cleanupTables } from './helpers.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const migrationsFolder = join(__dirname, '../drizzle');
-
-const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://mailpit:8025';
-
-async function fetchMailpitMessages(): Promise<Array<{ ID: string; To?: Array<{ Address?: string; Name?: string }> }>> {
-  const resp = await fetch(`${MAILPIT_URL}/api/v1/messages?latest=100`);
-  const data = await resp.json();
-  const arr = Array.isArray(data) ? data : (data.messages ?? []);
-  return arr;
-}
-
-async function fetchMailpitMessageById(id: string): Promise<{ HTML?: string; Text?: string } | null> {
-  const resp = await fetch(`${MAILPIT_URL}/api/v1/message/${id}`);
-  const data = await resp.json();
-  return { HTML: data.HTML, Text: data.Text };
-}
 
 async function fetchMailpitMessagesFor(email: string): Promise<Array<{ HTML?: string; Text?: string }>> {
   const msgs = await fetchMailpitMessages();
@@ -36,25 +22,6 @@ async function fetchMailpitMessagesFor(email: string): Promise<Array<{ HTML?: st
     if (full) results.push(full);
   }
   return results;
-}
-
-async function fetchLatestMailpitMessageFor(email: string): Promise<{ HTML?: string; Text?: string } | null> {
-  const msgs = await fetchMailpitMessagesFor(email);
-  return msgs[0] ?? null;
-}
-
-function extractTokenFromHtml(html: string): string | null {
-  const match = html.match(/https?:\/\/[^"]*verify[^"]*/);
-  if (!match) return null;
-  return new URL(match[0]).searchParams.get('token');
-}
-
-async function apiRequest(app: Awaited<ReturnType<typeof buildApp>>, method: string, url: string, body?: Record<string, unknown>) {
-  const res = await ((request(app.server) as any)[method.toLowerCase()](url).send(body) as Promise<{ statusCode: number; body: any }>);
-  return {
-    statusCode: res.statusCode,
-    body: res.body,
-  };
 }
 
 describe('Auth API — Signup, Verify, Resend', () => {
@@ -70,13 +37,7 @@ describe('Auth API — Signup, Verify, Resend', () => {
   });
 
   beforeEach(async () => {
-    await pool.query('DELETE FROM comments');
-    await pool.query('DELETE FROM tickets');
-    await pool.query('DELETE FROM epics');
-    await pool.query('DELETE FROM teams');
-    await pool.query('DELETE FROM verification_tokens');
-    await pool.query('DELETE FROM sessions');
-    await pool.query('DELETE FROM users');
+    await cleanupTables(pool);
   });
 
   afterAll(async () => {
