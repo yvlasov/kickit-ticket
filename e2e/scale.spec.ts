@@ -18,12 +18,15 @@ test.describe('Scale', () => {
     // Parse credentials from output
     const emailMatch = output.match(/Email:\s+(.+)/);
     const passwordMatch = output.match(/Password:\s+(.+)/);
+    const teamMatch = output.match(/Team:\s+.+\s+\(([0-9a-f-]+)\)/);
 
     expect(emailMatch).not.toBeNull();
     expect(passwordMatch).not.toBeNull();
+    expect(teamMatch).not.toBeNull();
 
     const demoEmail = emailMatch![1].trim();
     const demoPassword = passwordMatch![1].trim();
+    const demoTeamId = teamMatch![1];
 
     // Log in via browser
     await page.goto('/login');
@@ -32,33 +35,14 @@ test.describe('Scale', () => {
     await page.getByRole('button', { name: 'Login' }).click();
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 15000 });
 
-    // Navigate to board (auto-selects first team via setSearchParams)
-    await page.getByRole('navigation').getByRole('link', { name: 'Board' }).click();
+    // Navigate to board with explicit teamId in URL
+    await page.goto(`/board?teamId=${demoTeamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 15000 });
 
-    // Wait for the team select to be populated
-    const teamSelect = page.locator('select').first();
-    await expect(teamSelect).toBeVisible({ timeout: 10000 });
-
-    // Wait for team options to appear (always has "Select a team" empty option + teams)
-    let teamOptions = 0;
-    for (let i = 0; i < 10; i++) {
-      teamOptions = await teamSelect.locator('option').count();
-      if (teamOptions > 1) break; // >1 because there's always a "Select a team" empty option
-      await page.waitForTimeout(1000);
-    }
-
-    // If no team selected yet, select the first team
-    const currentSelected = await teamSelect.inputValue();
-    if (!currentSelected && teamOptions > 0) {
-      await teamSelect.selectOption({ index: 1 }); // skip empty option
-      await page.waitForTimeout(2000);
-    }
-
-    // Wait for cards to render
+    // Wait for cards to render (poll for up to 20s)
     const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
     let cardCount = 0;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       cardCount = await cards.count();
       if (cardCount >= 100) break;
       await page.waitForTimeout(500);

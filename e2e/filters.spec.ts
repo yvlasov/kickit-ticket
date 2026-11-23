@@ -72,8 +72,7 @@ test.describe('Filters', () => {
     expect(page.url()).toContain('type=bug');
 
     // Apply epic filter = Filter Epic A (nth(2) = FilterBar epic select)
-    // Wait for epic option to appear first
-    await expect(page.locator(`select option[value="${epicA}"]`)).toBeVisible({ timeout: 10000 });
+    // Native <select> options are not "visible" in Playwright terms, so just select directly
     const epicSelect = page.locator('select').nth(2);
     await epicSelect.selectOption(epicA);
     await page.waitForTimeout(500);

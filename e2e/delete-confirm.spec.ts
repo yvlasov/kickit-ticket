@@ -61,7 +61,8 @@ test.describe('Delete confirmation', () => {
     await page.getByRole('button', { name: 'Delete' }).click();
 
     // After accept, deleteMutation.onSuccess navigates to /tickets?teamId=...
-    await expect(page.getByRole('heading', { name: 'Tickets' })).toBeVisible({ timeout: 10000 });
+    // Wait for URL to change to tickets list
+    await expect(page).toHaveURL(/\/tickets\?teamId=/, { timeout: 10000 });
 
     // Verify deleted ticket is not in the list
     const isDeleted = await page.getByText('Delete Me Ticket').isVisible().catch(() => false);
