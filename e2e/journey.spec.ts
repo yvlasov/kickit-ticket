@@ -48,7 +48,9 @@ test.describe('Full UI journey', () => {
     // 7. Create epic via UI (Epics page)
     const epicTitle = 'E2E Epic';
     await page.getByRole('link', { name: 'Epics' }).click();
-    await page.getByLabel('Team *').selectOption({ label: teamName });
+    // Select team in the create form (second select after the team filter)
+    const selects = page.locator('select');
+    await selects.nth(1).selectOption({ label: teamName });
     await page.getByLabel('Title *').fill(epicTitle);
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText(epicTitle)).toBeVisible();

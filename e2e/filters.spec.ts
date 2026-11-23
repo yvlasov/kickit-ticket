@@ -53,7 +53,7 @@ test.describe('Filters', () => {
     expect(initialCount).toBeGreaterThanOrEqual(4);
 
     // Apply type filter = bug
-    await page.locator('select.border-gray-300').first().selectOption('bug');
+    await page.locator('select.border-gray-300').first().selectOption({ label: 'Bug' });
     await page.waitForTimeout(500); // debounce
 
     const bugCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');

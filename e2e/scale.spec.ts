@@ -34,9 +34,18 @@ test.describe('Scale', () => {
     await page.getByRole('button', { name: 'Login' }).click();
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 15000 });
 
-    // Navigate to board via nav link
+    // Navigate to board (auto-selects first team)
     await page.getByRole('navigation').getByRole('link', { name: 'Board' }).click();
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 15000 });
+
+    // Wait for the team select to be populated and auto-select first team
+    const teamSelect = page.locator('select.border-gray-300').first();
+    await expect(teamSelect).toBeVisible({ timeout: 10000 });
+    const teamOptions = await teamSelect.locator('option').count();
+    if (teamOptions > 0) {
+      await teamSelect.selectOption({ index: 0 });
+      await page.waitForTimeout(1000);
+    }
 
     // Wait for cards to render
     const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');

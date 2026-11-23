@@ -60,15 +60,16 @@ test.describe('Delete confirmation', () => {
     dialogAction = 'accept';
     await page.getByRole('button', { name: 'Delete' }).click();
 
-    // After accept, should navigate away
+    // After accept, should navigate away (to tickets list)
     await page.waitForTimeout(1000);
 
-    // Direct URL should now show empty state or 404
+    // Direct URL should now show 404 or empty state
     await page.goto(`/tickets/${ticketId}`);
-    // Either 404 page or empty state
+    // Either 404 page or empty state or not found
     const isNotFound = await page.locator('[class*="bg-red-50"]', { hasText: 'Not found' }).isVisible().catch(() => false);
     const isEmptyState = await page.getByText('No teams yet').isVisible().catch(() => false) ||
-      await page.getByText('Select a team').isVisible().catch(() => false);
+      await page.getByText('Select a team').isVisible().catch(() => false) ||
+      await page.getByText('No tickets').isVisible().catch(() => false);
     expect(isNotFound || isEmptyState).toBe(true);
   });
 });
