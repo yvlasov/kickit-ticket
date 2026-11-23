@@ -105,12 +105,10 @@ test.describe('Full UI journey', () => {
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    // Track PATCH requests
-    let patchStatus = 0;
-    page.on('response', async (resp) => {
-      if (resp.url().includes('/api/tickets/') && resp.request().method() === 'PATCH') {
-        patchStatus = resp.status();
-      }
+    // Remove href to prevent <a> click from navigating during drag
+    const cardHref = await card.getAttribute('href');
+    await card.evaluate((el: HTMLElement) => {
+      (el as HTMLAnchorElement).removeAttribute('href');
     });
 
     // REAL DRAG using page.mouse (CDP Input.dispatchMouseEvent fires trusted pointer events)
@@ -128,26 +126,19 @@ test.describe('Full UI journey', () => {
     // Wait for optimistic update + PATCH request to settle
     await page.waitForTimeout(2000);
 
-    // The <a> click navigated to ticket detail — go back to board
-    try {
-      await page.goBack();
-      await page.waitForTimeout(500);
-    } catch {
-      // Already on board
-    }
-
-    // Re-navigate to board to ensure clean state
-    await page.goto(`/board?teamId=${teamId}`);
-    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
-
-    console.log(`PATCH status: ${patchStatus}`);
-
     // 12. Assert the card now appears in the In-progress column
-    const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
+    const inProgressCards = inProgressCol.locator('a');
     await expect(inProgressCards.first()).toBeVisible({ timeout: 5000 });
 
     // Verify the card title is visible
     await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
+
+    // Restore href
+    if (cardHref) {
+      await card.evaluate((el: HTMLElement, href: string) => {
+        (el as HTMLAnchorElement).setAttribute('href', href);
+      }, cardHref);
+    }
 
     // 13. Page reload — card should STILL be in In progress (persisted)
     await page.reload();
