@@ -118,38 +118,12 @@ test.describe('Full UI journey', () => {
     // Step 5: release
     await page.mouse.up();
 
-    // Track PATCH during drag
-    const patchResponses: Array<{ url: string; status: number }> = [];
-    page.on('response', async (resp) => {
-      if (resp.url().includes('/api/tickets/') && resp.request().method() === 'PATCH') {
-        patchResponses.push({ url: resp.url(), status: resp.status() });
-      }
-    });
-
     // Wait for optimistic update + PATCH request to settle
-    await page.waitForTimeout(3000);
-
-    // Debug output
-    const newCardsCount = await newCol.locator('a[href^="/tickets/"]').count();
-    const ipCardsCount = await inProgressCol.locator('a[href^="/tickets/"]').count();
-    if (ipCardsCount === 0 && patchResponses.length === 0) {
-      // No PATCH sent - drag didn't activate. Check if we're still on board.
-      const isBoard = page.url().includes('/board');
-      throw new Error(`DEBUG: onBoard=${isBoard} URL=${page.url()} PATCH=${JSON.stringify(patchResponses)} New=${newCardsCount} IP=${ipCardsCount}`);
-    }
-    if (ipCardsCount === 0) {
-      throw new Error(`DEBUG: URL=${page.url()} PATCH=${JSON.stringify(patchResponses)} New=${newCardsCount} IP=${ipCardsCount}`);
-    }
+    await page.waitForTimeout(2000);
 
     // 12. Assert the card now appears in the In-progress column
-    // Poll until card count stabilizes (optimistic update may take time)
-    let ipCount = 0;
-    for (let i = 0; i < 20; i++) {
-      ipCount = await inProgressCol.locator('a[href^="/tickets/"]').count();
-      if (ipCount > 0) break;
-      await page.waitForTimeout(500);
-    }
-    expect(ipCount).toBeGreaterThan(0);
+    const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
+    await expect(inProgressCards.first()).toBeVisible({ timeout: 5000 });
 
     // Verify the card title is visible
     await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
