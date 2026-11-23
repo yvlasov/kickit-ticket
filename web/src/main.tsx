@@ -7,7 +7,7 @@ import Signup from './pages/Signup';
 import CheckEmail from './pages/CheckEmail';
 import Verify from './pages/Verify';
 import Login from './pages/Login';
-import Home from './pages/Home';
+import Home from './pages/Teams';
 import AppShell from './components/AppShell';
 import { queryClient, handleUnauthorized } from './api';
 
