@@ -138,7 +138,7 @@ function DraggableCard({
       {...listeners}
       href={`/tickets/${ticket.id}`}
       className="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"
-      onPointerUp={() => { justDraggedRef.current = true; }}
+      onMouseDown={() => { justDraggedRef.current = true; }}
       onClick={(e) => { if (justDraggedRef.current) e.preventDefault(); }}
     >
       <div className="flex items-center justify-between mb-1">
