@@ -17,6 +17,9 @@ export async function buildApp() {
     prefix: '/',
   });
 
+  const sessionModule = await import('./plugins/session.ts');
+  await app.register(sessionModule.sessionGuardPlugin);
+
   const routesModule = await import('./routes.ts');
   await app.register(routesModule.default, { prefix: '/api' });
 
