@@ -7,26 +7,49 @@ import Signup from './pages/Signup';
 import CheckEmail from './pages/CheckEmail';
 import Verify from './pages/Verify';
 import Login from './pages/Login';
+import Home from './pages/Home';
+import AppShell from './components/AppShell';
+import { queryClient, handleUnauthorized } from './api';
 
-const queryClient = new QueryClient();
+const globalQueryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+    },
+  },
+});
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  return (
+    <AppShell>
+      {children}
+    </AppShell>
+  );
+}
 
 function App() {
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Routes>
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/check-email" element={<CheckEmail />} />
-        <Route path="/verify" element={<Verify />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="*" element={<Login />} />
-      </Routes>
-    </div>
+    <Routes>
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/check-email" element={<CheckEmail />} />
+      <Route path="/verify" element={<Verify />} />
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Home />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Login />} />
+    </Routes>
   );
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={globalQueryClient}>
       <BrowserRouter>
         <App />
       </BrowserRouter>
