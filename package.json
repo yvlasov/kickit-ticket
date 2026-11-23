@@ -11,6 +11,6 @@
     "demo:data": "tsx scripts/demo-data.ts"
   },
   "devDependencies": {
-    "@playwright/test": "1.65.1"
+    "@playwright/test": "1.46.1"
   }
 }
