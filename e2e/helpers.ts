@@ -1,4 +1,4 @@
-import { Page, request } from '@playwright/test';
+import { Page, APIRequestContext } from '@playwright/test';
 
 export function uniqueEmail(): string {
   return `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@kickit.local`;
@@ -18,13 +18,17 @@ export async function signupViaApi(page: Page, email: string, password: string):
   }
 }
 
-export async function pollVerificationToken(email: string): Promise<string | null> {
+export async function pollVerificationToken(page: Page, email: string): Promise<string | null> {
   const mailpitUrl = process.env.MAILPIT_URL ?? 'http://mailpit:8025';
   const startTime = Date.now();
   const timeoutMs = 15_000;
 
   while (Date.now() - startTime < timeoutMs) {
-    const resp = await fetch(`${mailpitUrl}/api/v1/messages?latest=100`);
+    const resp = await page.request.get(`${mailpitUrl}/api/v1/messages?latest=100`);
+    if (!resp.ok()) {
+      await new Promise((r) => setTimeout(r, 500));
+      continue;
+    }
     const data = await resp.json();
     const msgs = Array.isArray(data) ? data : (data.messages ?? []);
     const match = msgs.find(
@@ -32,7 +36,11 @@ export async function pollVerificationToken(email: string): Promise<string | nul
         m.To?.some((t) => (t.Address ?? '').toLowerCase() === email.toLowerCase()),
     );
     if (match) {
-      const detail = await fetch(`${mailpitUrl}/api/v1/message/${match.ID}`);
+      const detail = await page.request.get(`${mailpitUrl}/api/v1/message/${match.ID}`);
+      if (!detail.ok()) {
+        await new Promise((r) => setTimeout(r, 500));
+        continue;
+      }
       const msg = await detail.json();
       const html = msg.HTML ?? '';
       const m = html.match(/https?:\/\/[^"]*verify[^"]*/);
@@ -115,24 +123,6 @@ export async function createTicketViaApi(
   }
   const data = await resp.json() as { id: string };
   return data.id;
-}
-
-export async function fullSignupAndLogin(page: Page, email: string, password: string): Promise<void> {
-  // Sign up via API
-  await signupViaApi(page, email, password);
-
-  // Poll for verification token
-  const token = await pollVerificationToken(email);
-  if (!token) throw new Error('No verification token found');
-
-  // Verify via UI (posts token to /api/auth/verify)
-  await page.goto('/verify');
-  await page.getByLabel('Verification token').fill(token);
-  await page.getByRole('button', { name: 'Verify' }).click();
-  await page.waitForURL(/\/(login|board|tickets|\/$)/, { timeout: 10000 });
-
-  // Login via UI
-  await loginViaUi(page, email, password);
 }
 
 // Multi-step drag for dnd-kit PointerSensor with activationConstraint distance=6

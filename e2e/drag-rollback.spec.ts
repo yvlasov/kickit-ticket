@@ -20,7 +20,7 @@ test.describe('Drag rollback', () => {
       data: { email, password },
     });
 
-    const token = await pollVerificationToken(email);
+    const token = await pollVerificationToken(page, email);
     expect(token).not.toBeNull();
     await page.goto(`/verify?token=${token}`);
     await expect(page.getByText('Email verified!')).toBeVisible();

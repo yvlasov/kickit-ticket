@@ -26,7 +26,7 @@ test.describe('Full UI journey', () => {
     await expect(page.getByText('Check your email')).toBeVisible();
 
     // 3. Poll for verification token
-    const token = await pollVerificationToken(email);
+    const token = await pollVerificationToken(page, email);
     expect(token).not.toBeNull();
 
     // 4. Verify via URL

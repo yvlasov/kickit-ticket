@@ -82,6 +82,7 @@ services:
       MAILPIT_URL: http://mailpit:8025
     depends_on:
       - app
+      - mailpit
     profiles:
       - test
 
