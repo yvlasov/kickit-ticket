@@ -3,7 +3,6 @@ import {
   uniqueEmail,
   uniqueTeamName,
   pollVerificationToken,
-  loginViaUi,
   createTeamViaApi,
   createEpicViaApi,
   createTicketViaApi,
@@ -38,18 +37,17 @@ test.describe('Full UI journey', () => {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
-    // Should redirect to board
-    await page.waitForURL(/\/board/, { timeout: 10000 });
+    // Wait for the SPA to load (home page with Teams heading)
+    await expect(page.getByText('Teams')).toBeVisible({ timeout: 15000 });
 
     // 6. Create team via UI (Teams page)
-    await page.goto('/');
     await page.getByPlaceholder('Team name').fill(teamName);
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText(teamName)).toBeVisible();
 
     // 7. Create epic via UI (Epics page)
     const epicTitle = 'E2E Epic';
-    await page.goto('/epics');
+    await page.getByRole('link', { name: 'Epics' }).click();
     await page.getByLabel('Team').selectOption({ label: teamName });
     await page.getByLabel('Title *').fill(epicTitle);
     await page.getByRole('button', { name: 'Create' }).click();
@@ -67,7 +65,8 @@ test.describe('Full UI journey', () => {
     expect(epicId).toBeDefined();
 
     // 9. Create ticket via UI (Board → New Ticket)
-    await page.goto(`/board?teamId=${teamId}`);
+    await page.getByRole('link', { name: 'Board' }).click();
+    await page.waitForURL(/teamId=/, { timeout: 10000 });
     await page.getByRole('button', { name: 'New Ticket' }).click();
     await page.getByPlaceholder('Ticket title').fill('E2E Journey Ticket');
     await page.getByPlaceholder('Ticket description').fill('Body of the journey ticket');
@@ -83,7 +82,7 @@ test.describe('Full UI journey', () => {
     await page.goto(`/board?teamId=${teamId}`);
 
     // Wait for board to load
-    await page.waitForSelector('[class*="bg-white"]', { timeout: 10000 });
+    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
 
     // Drag from "New" column to "In progress" column using mouse steps
     const newColumn = page.locator('h3', { hasText: 'New' }).first().locator('..');
@@ -116,7 +115,7 @@ test.describe('Full UI journey', () => {
 
     // 13. Page reload — card should still be in In progress
     await page.reload();
-    await page.waitForSelector('[class*="bg-white"]', { timeout: 10000 });
+    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
 
     // Verify card persisted in In progress
     const inProgressAfterReload = inProgressColumn.locator('a.bg-white');

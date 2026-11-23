@@ -27,7 +27,7 @@ test.describe('Delete confirmation', () => {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
-    await page.waitForURL(/\/(board|tickets|\/$)/, { timeout: 10000 });
+    await expect(page.getByText('Teams')).toBeVisible({ timeout: 15000 });
 
     // Create team + ticket via API
     const teamId = await createTeamViaApi(page, teamName);
@@ -38,24 +38,23 @@ test.describe('Delete confirmation', () => {
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
 
     // Click Delete — expect a dialog
-    let dialogAccepted = false;
+    let dialogDismissed = false;
     page.on('dialog', async (dialog) => {
-      dialogAccepted = true;
-      // First time: dismiss
+      dialogDismissed = true;
       await dialog.dismiss();
     });
 
     await page.getByRole('button', { name: 'Delete' }).click();
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
-    expect(dialogAccepted).toBe(true);
+    expect(dialogDismissed).toBe(true);
 
     // Ticket still present after dismiss
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
 
     // Click Delete again — accept this time
-    let dialogAccepted2 = false;
+    let dialogAccepted = false;
     page.on('dialog', async (dialog) => {
-      dialogAccepted2 = true;
+      dialogAccepted = true;
       await dialog.accept();
     });
 

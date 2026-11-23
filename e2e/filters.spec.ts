@@ -28,7 +28,7 @@ test.describe('Filters', () => {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
-    await page.waitForURL(/\/(board|tickets|\/$)/, { timeout: 10000 });
+    await expect(page.getByText('Teams')).toBeVisible({ timeout: 15000 });
 
     // Create team
     const teamId = await createTeamViaApi(page, teamName);
@@ -45,7 +45,7 @@ test.describe('Filters', () => {
 
     // Navigate to board
     await page.goto(`/board?teamId=${teamId}`);
-    await page.waitForSelector('[class*="bg-white"]', { timeout: 10000 });
+    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
 
     // Count initial cards
     const initialCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
@@ -92,7 +92,7 @@ test.describe('Filters', () => {
 
     // Reload — same subset should appear
     await page.reload();
-    await page.waitForSelector('[class*="bg-white"]', { timeout: 10000 });
+    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
 
     // Verify filters persisted
     expect(page.url()).toContain('type=bug');

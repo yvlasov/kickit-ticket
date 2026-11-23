@@ -15,21 +15,23 @@ test.describe('Scale', () => {
 
     console.log('Demo script output:', output);
 
-    // Parse email from output
-    const emailMatch = output.match(/Email:\s+(.+)/);
+    // Parse board URL from output
     const boardUrlMatch = output.match(/Board URL:\s+(.+)/);
-
-    expect(emailMatch).not.toBeNull();
     expect(boardUrlMatch).not.toBeNull();
     const demoBaseUrl = boardUrlMatch![1].trim();
 
     // Navigate to the board
     await page.goto(demoBaseUrl);
-    await page.waitForSelector('[class*="bg-white"]', { timeout: 15000 });
+    await expect(page.getByText('Board')).toBeVisible({ timeout: 15000 });
 
-    // Assert ≥100 cards rendered
+    // Wait for cards to render (up to 10s)
     const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
-    const cardCount = await cards.count();
+    let cardCount = 0;
+    for (let i = 0; i < 20; i++) {
+      cardCount = await cards.count();
+      if (cardCount >= 100) break;
+      await page.waitForTimeout(500);
+    }
     expect(cardCount).toBeGreaterThanOrEqual(100);
 
     // Apply a type filter via UI

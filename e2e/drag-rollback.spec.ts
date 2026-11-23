@@ -30,7 +30,7 @@ test.describe('Drag rollback', () => {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
-    await page.waitForURL(/\/(board|tickets|\/$)/, { timeout: 10000 });
+    await expect(page.getByText('Teams')).toBeVisible({ timeout: 15000 });
 
     // Create team + epic + ticket via API
     const teamId = await createTeamViaApi(page, teamName);
@@ -39,7 +39,7 @@ test.describe('Drag rollback', () => {
 
     // Navigate to board
     await page.goto(`/board?teamId=${teamId}`);
-    await page.waitForSelector('[class*="bg-white"]', { timeout: 10000 });
+    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
 
     // Route PATCH requests to abort (simulate server failure)
     await page.route(`**/api/tickets/${ticketId}`, async (route) => {

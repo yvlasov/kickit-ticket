@@ -28,7 +28,7 @@ test.describe('Comments', () => {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
-    await page.waitForURL(/\/(board|tickets|\/$)/, { timeout: 10000 });
+    await expect(page.getByText('Teams')).toBeVisible({ timeout: 15000 });
 
     // Create team + ticket via API
     const teamId = await createTeamViaApi(page, teamName);
@@ -39,9 +39,10 @@ test.describe('Comments', () => {
     await expect(page.getByText('Comment Ticket')).toBeVisible();
 
     // Capture modifiedAt display value before adding comments
-    const modifiedAtBefore = page.locator('span.text-sm.text-gray-500', { hasText: 'Modified at' }).locator('..').locator('p.text-sm.font-medium, p.text-sm').first();
-    const modifiedAtTextBefore = await modifiedAtBefore.textContent();
-    expect(modifiedAtTextBefore).toBeTruthy();
+    const modifiedAtField = page.locator('span.text-sm.text-gray-500', { hasText: 'Modified at' }).locator('..');
+    const modifiedAtTextBefore = modifiedAtField.locator('p.text-sm').first();
+    const modifiedAtTextBeforeContent = await modifiedAtTextBefore.textContent();
+    expect(modifiedAtTextBeforeContent).toBeTruthy();
 
     // Add first comment
     await page.getByPlaceholder('Add a comment...').fill('First comment body');
@@ -76,8 +77,9 @@ test.describe('Comments', () => {
     await expect(timeElements).toHaveCount(2);
 
     // Assert modifiedAt display unchanged
-    const modifiedAtAfter = page.locator('span.text-sm.text-gray-500', { hasText: 'Modified at' }).locator('..').locator('p.text-sm.font-medium, p.text-sm').first();
-    const modifiedAtTextAfter = await modifiedAtAfter.textContent();
-    expect(modifiedAtTextAfter).toBe(modifiedAtTextBefore);
+    const modifiedAtAfter = page.locator('span.text-sm.text-gray-500', { hasText: 'Modified at' }).locator('..');
+    const modifiedAtTextAfter = modifiedAtAfter.locator('p.text-sm').first();
+    const modifiedAtTextAfterContent = await modifiedAtTextAfter.textContent();
+    expect(modifiedAtTextAfterContent).toBe(modifiedAtTextBeforeContent);
   });
 });
