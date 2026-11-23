@@ -38,13 +38,23 @@ test.describe('Scale', () => {
     await page.getByRole('navigation').getByRole('link', { name: 'Board' }).click();
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 15000 });
 
-    // Wait for the team select to be populated and auto-select first team
+    // Wait for the team select to be populated
     const teamSelect = page.locator('select.border-gray-300').first();
     await expect(teamSelect).toBeVisible({ timeout: 10000 });
-    const teamOptions = await teamSelect.locator('option').count();
-    if (teamOptions > 0) {
-      await teamSelect.selectOption({ index: 0 });
+    
+    // Wait for team options to appear, then select the first one
+    let teamOptions = 0;
+    for (let i = 0; i < 10; i++) {
+      teamOptions = await teamSelect.locator('option').count();
+      if (teamOptions > 1) break; // >1 because there's always a "Select team" empty option
       await page.waitForTimeout(1000);
+    }
+    
+    // If no team selected yet, select the first team
+    const currentSelected = await teamSelect.inputValue();
+    if (!currentSelected && teamOptions > 0) {
+      await teamSelect.selectOption({ index: 1 }); // skip empty option
+      await page.waitForTimeout(2000);
     }
 
     // Wait for cards to render

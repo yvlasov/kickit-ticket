@@ -51,7 +51,7 @@ test.describe('Full UI journey', () => {
     // Select team in the create form (second select after the team filter)
     const selects = page.locator('select');
     await selects.nth(1).selectOption({ label: teamName });
-    await page.getByLabel('Title *').fill(epicTitle);
+    await page.locator('input[placeholder="Epic title"]').fill(epicTitle);
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText(epicTitle)).toBeVisible();
 
@@ -84,7 +84,7 @@ test.describe('Full UI journey', () => {
     await page.goto(`/board?teamId=${teamId}`);
 
     // Wait for board to load
-    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
     // Drag from "New" column to "In progress" column using mouse steps
     const newColumn = page.locator('h3', { hasText: 'New' }).first().locator('..');
@@ -117,7 +117,7 @@ test.describe('Full UI journey', () => {
 
     // 13. Page reload — card should still be in In progress
     await page.reload();
-    await expect(page.getByText('Board')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
     // Verify card persisted in In progress
     const inProgressAfterReload = inProgressColumn.locator('a.bg-white');

@@ -63,13 +63,9 @@ test.describe('Delete confirmation', () => {
     // After accept, should navigate away (to tickets list)
     await page.waitForTimeout(1000);
 
-    // Direct URL should now show 404 or empty state
+    // Navigate to the deleted ticket URL — should redirect to home (404 handler)
     await page.goto(`/tickets/${ticketId}`);
-    // Either 404 page or empty state or not found
-    const isNotFound = await page.locator('[class*="bg-red-50"]', { hasText: 'Not found' }).isVisible().catch(() => false);
-    const isEmptyState = await page.getByText('No teams yet').isVisible().catch(() => false) ||
-      await page.getByText('Select a team').isVisible().catch(() => false) ||
-      await page.getByText('No tickets').isVisible().catch(() => false);
-    expect(isNotFound || isEmptyState).toBe(true);
+    // After 404, the component navigates to '/' (Teams page)
+    await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 10000 });
   });
 });

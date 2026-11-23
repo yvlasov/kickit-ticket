@@ -47,31 +47,38 @@ test.describe('Filters', () => {
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
+    // Wait for at least 4 cards to appear
+    const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
+    let cardCount = 0;
+    for (let i = 0; i < 20; i++) {
+      cardCount = await cards.count();
+      if (cardCount >= 4) break;
+      await page.waitForTimeout(500);
+    }
+    expect(cardCount).toBeGreaterThanOrEqual(4);
+
     // Count initial cards
-    const initialCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
-    const initialCount = await initialCards.count();
+    const initialCount = await cards.count();
     expect(initialCount).toBeGreaterThanOrEqual(4);
 
-    // Apply type filter = bug
-    await page.locator('select.border-gray-300').first().selectOption({ label: 'Bug' });
+    // Apply type filter = bug (select by value)
+    const typeSelect = page.locator('select').first();
+    await typeSelect.selectOption('bug');
     await page.waitForTimeout(500); // debounce
 
-    const bugCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
-    const bugCount = await bugCards.count();
+    const bugCount = await cards.count();
     expect(bugCount).toBeLessThan(initialCount);
     expect(bugCount).toBeGreaterThanOrEqual(2);
 
     // Verify URL contains type filter
-    const url = page.url();
-    expect(url).toContain('type=bug');
+    expect(page.url()).toContain('type=bug');
 
-    // Apply epic filter = Filter Epic A
-    const epicSelect = page.locator('select.border-gray-300').nth(1);
-    await epicSelect.selectOption('Filter Epic A');
+    // Apply epic filter = Filter Epic A (select by value)
+    const epicSelect = page.locator('select').nth(1);
+    await epicSelect.selectOption(epicA);
     await page.waitForTimeout(500);
 
-    const epicACards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
-    const epicACount = await epicACards.count();
+    const epicACount = await cards.count();
     expect(epicACount).toBeLessThanOrEqual(bugCount);
     expect(epicACount).toBeGreaterThanOrEqual(1);
 
@@ -83,8 +90,7 @@ test.describe('Filters', () => {
     await page.locator('input[placeholder="Search titles..."]').fill('One');
     await page.waitForTimeout(500); // debounce
 
-    const searchCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
-    const searchCount = await searchCards.count();
+    const searchCount = await cards.count();
     expect(searchCount).toBeLessThanOrEqual(epicACount);
 
     // Verify URL contains q param
@@ -99,8 +105,7 @@ test.describe('Filters', () => {
     expect(page.url()).toContain('epic=');
     expect(page.url()).toContain('q=One');
 
-    const afterReloadCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
-    const afterReloadCount = await afterReloadCards.count();
+    const afterReloadCount = await cards.count();
     expect(afterReloadCount).toBe(searchCount);
 
     // Go back — previous filter state should be restored

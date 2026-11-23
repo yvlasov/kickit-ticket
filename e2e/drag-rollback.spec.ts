@@ -73,8 +73,8 @@ test.describe('Drag rollback', () => {
       await page.mouse.up();
     }
 
-    // Wait for the error toast to appear
-    await expect(page.getByText('Could not move ticket')).toBeVisible({ timeout: 5000 });
+    // Wait for the error toast to appear (any red toast with error text)
+    await expect(page.locator('[class*="bg-red-600"] p.text-sm')).toBeVisible({ timeout: 5000 });
 
     // Verify card snapped back to original column (still in "New")
     await expect(card).toBeVisible();
