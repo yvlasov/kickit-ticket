@@ -153,8 +153,9 @@ function DraggableCard({
   // Document-level click capture to prevent anchor navigation after drag
   useEffect(() => {
     const clickHandler = (e: MouseEvent) => {
-      if (justDraggedRef.current && e.target instanceof HTMLAnchorElement) {
-        e.preventDefault();
+      if (justDraggedRef.current) {
+        const anchor = (e.target as HTMLElement)?.closest('a');
+        if (anchor) e.preventDefault();
       }
     };
     document.addEventListener('click', clickHandler, { capture: true });
