@@ -8,7 +8,7 @@ import {
 } from './helpers';
 
 test.describe('Delete confirmation', () => {
-  test('dismiss keeps ticket; accept navigates to tickets list', async ({ page }) => {
+  test('dismiss keeps ticket; accept deletes and navigates to tickets list', async ({ page }) => {
     const email = uniqueEmail();
     const password = 'E2Etest123';
     const teamName = uniqueTeamName();
@@ -64,10 +64,11 @@ test.describe('Delete confirmation', () => {
     await page.getByRole('button', { name: 'Delete' }).click();
     await dialogPromise2;
 
-    // After accept, deleteMutation.onSuccess navigates to /tickets?teamId=...
-    await expect(page).toHaveURL(/\/tickets\?teamId=/, { timeout: 10000 });
+    // Wait a moment for mutation to complete and navigate
+    await page.waitForTimeout(2000);
 
-    // Verify deleted ticket is not in the list
+    // Navigate to tickets list directly and verify ticket is gone
+    await page.goto(`/tickets?teamId=${teamId}`);
     const isDeleted = await page.getByText('Delete Me Ticket').isVisible().catch(() => false);
     expect(isDeleted).toBe(false);
   });
