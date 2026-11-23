@@ -261,6 +261,12 @@ export default function Teams() {
                       >
                         Tickets
                       </a>
+                      <a
+                        href={`/board?teamId=${team.id}`}
+                        className="text-purple-600 text-sm hover:underline mr-3"
+                      >
+                        Board
+                      </a>
                       <button
                         onClick={() => handleDelete(team.id)}
                         disabled={deleteMutation.isPending || team.epicCount > 0 || team.ticketCount > 0}
