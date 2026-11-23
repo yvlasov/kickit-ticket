@@ -133,13 +133,6 @@ test.describe('Full UI journey', () => {
     // Verify the card title is visible
     await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
 
-    // Restore href
-    if (cardHref) {
-      await newCol.locator('a').evaluate((el: HTMLElement, href: string) => {
-        (el as HTMLAnchorElement).setAttribute('href', href);
-      }, cardHref);
-    }
-
     // 13. Page reload — card should STILL be in In progress (persisted)
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
