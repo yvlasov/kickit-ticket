@@ -75,10 +75,12 @@ export async function editEpic(
   const current = await db
     .select({
       id: epics.id,
+      teamId: epics.teamId,
       title: epics.title,
       description: epics.description,
       createdAt: epics.createdAt,
       modifiedAt: epics.modifiedAt,
+      ticketCount: sql<number>`COALESCE((SELECT COUNT(*) FROM tickets WHERE tickets.epic_id = epics.id), 0)::int`,
     })
     .from(epics)
     .where(eq(epics.id, epicId))
@@ -87,20 +89,20 @@ export async function editEpic(
 
   if (!current) return null;
 
-  // No-op diff: compare trimmed title and normalized description
+  // No-op diff: exact title comparison (epic titles are case-sensitive) and normalized description
   const normalizedDesc = newDescription === null ? null : newDescription;
-  const isTitleSame = current.title.toLowerCase() === newTitle.toLowerCase();
+  const isTitleSame = current.title === newTitle;
   const isDescSame = current.description === normalizedDesc;
 
   if (isTitleSame && isDescSame) {
     return {
       id: current.id,
-      teamId: '',
+      teamId: current.teamId,
       title: current.title,
       description: current.description,
       createdAt: current.createdAt,
       modifiedAt: current.modifiedAt,
-      ticketCount: 0,
+      ticketCount: current.ticketCount,
     };
   }
 
@@ -118,7 +120,7 @@ export async function editEpic(
     })
     .then((rows) => ({
       ...rows[0],
-      ticketCount: 0,
+      ticketCount: current.ticketCount,
     }));
 
   return result;

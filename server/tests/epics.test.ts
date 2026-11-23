@@ -263,10 +263,79 @@ describe('Epics API — CRUD', () => {
     const epicId = createRes.body.id;
     const originalModifiedAt = createRes.body.modifiedAt;
 
-    const editRes = await apiRequest(app, 'PATCH', `/api/epics/${epicId}`, { title: '  ORIGINAL  ', description: '  Desc  ' }, cookie);
+    const editRes = await apiRequest(app, 'PATCH', `/api/epics/${epicId}`, { title: '  Original  ', description: '  Desc  ' }, cookie);
     expect(editRes.statusCode).toBe(200);
     expect(editRes.body.title).toBe('Original');
     expect(editRes.body.modifiedAt).toBe(originalModifiedAt);
+  });
+
+  // --- Test 4d: title case change → real edit, modifiedAt advances ---
+  it('PATCH /api/epics/:id title case change (Original → ORIGINAL) advances modifiedAt', async () => {
+    const { cookie } = await signupAndVerify(app, pool, 'epic-user4d@example.com', 'password123');
+
+    const teamRes = await apiRequest(app, 'POST', '/api/teams', { name: 'Edit Team D' }, cookie);
+    const teamId = teamRes.body.id;
+
+    const createRes = await apiRequest(app, 'POST', '/api/epics', { teamId, title: 'Original', description: 'Desc' }, cookie);
+    const epicId = createRes.body.id;
+    const originalModifiedAt = createRes.body.modifiedAt;
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const editRes = await apiRequest(app, 'PATCH', `/api/epics/${epicId}`, { title: 'ORIGINAL', description: 'Desc' }, cookie);
+    expect(editRes.statusCode).toBe(200);
+    expect(editRes.body.title).toBe('ORIGINAL');
+    expect(editRes.body.modifiedAt).not.toBe(originalModifiedAt);
+    expect(new Date(editRes.body.modifiedAt).getTime()).toBeGreaterThan(new Date(originalModifiedAt).getTime());
+  });
+
+  // --- Test 4e: no-op edit with ticket fixture → real teamId and ticketCount ---
+  it('PATCH /api/epics/:id no-op edit with ticket fixture returns real teamId and ticketCount', async () => {
+    const { cookie, id: userId } = await signupAndVerify(app, pool, 'epic-user4e@example.com', 'password123');
+
+    const teamRes = await apiRequest(app, 'POST', '/api/teams', { name: 'Edit Team E' }, cookie);
+    const teamId = teamRes.body.id;
+
+    const createRes = await apiRequest(app, 'POST', '/api/epics', { teamId, title: 'Fixture Epic', description: 'Desc' }, cookie);
+    const epicId = createRes.body.id;
+    const originalModifiedAt = createRes.body.modifiedAt;
+
+    // Insert 1 ticket referencing the epic via SQL
+    await pool.query(
+      'INSERT INTO tickets (id, team_id, type, state, epic_id, title, body, created_by, created_at, modified_at) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, now(), now())',
+      [teamId, 'bug', 'new', epicId, 'Ticket', 'Body', userId],
+    );
+
+    // No-op edit (same title/desc after trim)
+    const editRes = await apiRequest(app, 'PATCH', `/api/epics/${epicId}`, { title: '  Fixture Epic  ', description: '  Desc  ' }, cookie);
+    expect(editRes.statusCode).toBe(200);
+    expect(editRes.body.title).toBe('Fixture Epic');
+    expect(editRes.body.modifiedAt).toBe(originalModifiedAt);
+    expect(editRes.body.teamId).toBe(teamId);
+    expect(editRes.body.ticketCount).toBe(1);
+  });
+
+  // --- Test 4f: real edit with ticket fixture → ticketCount 1 ---
+  it('PATCH /api/epics/:id real edit with ticket fixture returns ticketCount 1', async () => {
+    const { cookie, id: userId } = await signupAndVerify(app, pool, 'epic-user4f@example.com', 'password123');
+
+    const teamRes = await apiRequest(app, 'POST', '/api/teams', { name: 'Edit Team F' }, cookie);
+    const teamId = teamRes.body.id;
+
+    const createRes = await apiRequest(app, 'POST', '/api/epics', { teamId, title: 'Fixture Epic F', description: 'Desc' }, cookie);
+    const epicId = createRes.body.id;
+
+    // Insert 1 ticket referencing the epic via SQL
+    await pool.query(
+      'INSERT INTO tickets (id, team_id, type, state, epic_id, title, body, created_by, created_at, modified_at) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, now(), now())',
+      [teamId, 'bug', 'new', epicId, 'Ticket', 'Body', userId],
+    );
+
+    const editRes = await apiRequest(app, 'PATCH', `/api/epics/${epicId}`, { title: 'Updated Epic F', description: 'New Desc' }, cookie);
+    expect(editRes.statusCode).toBe(200);
+    expect(editRes.body.title).toBe('Updated Epic F');
+    expect(editRes.body.teamId).toBe(teamId);
+    expect(editRes.body.ticketCount).toBe(1);
   });
 
   // --- Test 5: edit payload including teamId of another team → 200 but teamId UNCHANGED ---
