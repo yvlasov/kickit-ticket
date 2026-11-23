@@ -37,10 +37,11 @@ test.describe('Delete confirmation', () => {
     await page.goto(`/tickets/${ticketId}`);
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
 
-    // First delete click — dismiss (handler dismisses immediately so click can proceed)
+    // First delete click — dismiss
     const dialogPromise1 = new Promise<any>((resolve) => {
       const handler = (d: any) => {
         d.dismiss();
+        page.off('dialog', handler);
         resolve(d);
       };
       page.on('dialog', handler);
@@ -51,10 +52,11 @@ test.describe('Delete confirmation', () => {
     // Ticket still present after dismiss
     await expect(page.getByText('Delete Me Ticket')).toBeVisible();
 
-    // Second delete click — accept (handler accepts immediately)
+    // Second delete click — accept
     const dialogPromise2 = new Promise<any>((resolve) => {
       const handler = (d: any) => {
         d.accept();
+        page.off('dialog', handler);
         resolve(d);
       };
       page.on('dialog', handler);
