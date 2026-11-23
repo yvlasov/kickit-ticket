@@ -130,6 +130,7 @@ function DraggableCard({
   };
 
   const anchorRef = useRef<HTMLAnchorElement | null>(null);
+  const observerRef = useRef<MutationObserver | null>(null);
 
   const mergeRefs = useCallback(
     (node: HTMLAnchorElement | null) => {
@@ -142,19 +143,13 @@ function DraggableCard({
   useEffect(() => {
     const el = anchorRef.current;
     if (!el) return;
-    const pointerUpHandler = () => {
+    const handler = (e: PointerEvent) => {
+      console.log('[DraggableCard] pointerup capture, setting flag=true');
       justDraggedRef.current = true;
       setTimeout(() => { justDraggedRef.current = false; }, 100);
     };
-    el.addEventListener('pointerup', pointerUpHandler, { capture: true });
-    const clickHandler = (e: Event) => {
-      if (justDraggedRef.current) e.preventDefault();
-    };
-    el.addEventListener('click', clickHandler, { capture: true });
-    return () => {
-      el.removeEventListener('pointerup', pointerUpHandler, { capture: true });
-      el.removeEventListener('click', clickHandler, { capture: true });
-    };
+    el.addEventListener('pointerup', handler, { capture: true });
+    return () => el.removeEventListener('pointerup', handler, { capture: true });
   }, [justDraggedRef]);
 
   return (
@@ -166,7 +161,13 @@ function DraggableCard({
       {...listeners}
       href={`/tickets/${ticket.id}`}
       className="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"
-      onClick={(e) => { if (justDraggedRef.current) e.preventDefault(); }}
+      onClick={(e) => {
+        console.log('[DraggableCard] onClick flag=', justDraggedRef.current, 'url=', window.location.href);
+        if (justDraggedRef.current) {
+          console.log('[DraggableCard] onClick preventing default');
+          e.preventDefault();
+        }
+      }}
     >
       <div className="flex items-center justify-between mb-1">
         <span className="font-medium text-sm text-gray-900 truncate">
@@ -333,7 +334,9 @@ export default function Board() {
   );
 
   function handleDragEnd(event: DragEndEvent) {
+    console.log('[Board] handleDragEnd START, justDragged was', justDraggedRef.current);
     justDraggedRef.current = true;
+    console.log('[Board] handleDragEnd set flag=true');
     window.setTimeout(() => { justDraggedRef.current = false; }, 100);
 
     const { active, over } = event;
