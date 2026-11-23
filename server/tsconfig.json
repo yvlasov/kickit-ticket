@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "outDir": "dist",
+    "paths": {
+      "@kickit/shared": ["../shared/src/index.ts"],
+      "@kickit/shared/*": ["../shared/src/*"]
+    }
+  },
+  "include": ["src", "tests"]
+}

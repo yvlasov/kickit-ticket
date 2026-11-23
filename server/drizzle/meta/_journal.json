@@ -1,0 +1,23 @@
+{
+  "id": "init-id",
+  "prevId": "",
+  "entries": [
+    {
+      "idx": 0,
+      "local": {
+        "fileName": "0000_init",
+        "name": "init",
+        "tablesCreated": [
+          "users",
+          "sessions",
+          "verification_tokens",
+          "teams",
+          "epics",
+          "tickets",
+          "comments"
+        ]
+      },
+      "timestamp": "2026-01-01T00:00:00.000Z"
+    }
+  ]
+}

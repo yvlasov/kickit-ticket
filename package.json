@@ -1,0 +1,9 @@
+{
+  "name": "kickit-ticket",
+  "private": true,
+  "workspaces": [
+    "server",
+    "web",
+    "shared"
+  ]
+}
