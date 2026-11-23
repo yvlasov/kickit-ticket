@@ -139,10 +139,11 @@ test.describe('Full UI journey', () => {
     // 14. Regression: normal card click (no drag) navigates to ticket detail
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
-    const clickCard = newCol.locator('a[href^="/tickets/"]').first();
-    await expect(clickCard).toBeVisible({ timeout: 10000 });
-    const cardHref = await clickCard.getAttribute('href');
-    await clickCard.click();
+    // Find the card by its title — it may be in any column after the drag
+    const anyCard = page.locator(`a[href^="/tickets/"]:has-text("E2E Journey Ticket")`).first();
+    await expect(anyCard).toBeVisible({ timeout: 10000 });
+    const cardHref = await anyCard.getAttribute('href');
+    await anyCard.click();
     await expect(page.getByRole('heading', { name: 'E2E Journey Ticket' })).toBeVisible({ timeout: 10000 });
     expect(page.url()).toContain(cardHref ?? '');
   });
