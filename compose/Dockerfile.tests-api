@@ -15,6 +15,9 @@ RUN npm ci --ignore-scripts
 COPY server/src/ server/src/
 COPY server/drizzle/ server/drizzle/
 
+# Copy shared source (needed for @kickit/shared imports)
+COPY shared/src/ shared/src/
+
 # Copy test files
 COPY server/tests/ server/tests/
 COPY server/vitest.config.ts server/

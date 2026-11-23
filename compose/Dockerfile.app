@@ -43,6 +43,11 @@ RUN npm ci --ignore-scripts
 
 # Copy server source (tsx runs from source)
 COPY server/src/ server/src/
+
+# Copy shared source (needed for @kickit/shared imports)
+COPY shared/src/ shared/src/
+
+# Copy drizzle files
 COPY server/drizzle/ server/drizzle/
 COPY server/drizzle.config.ts server/
 

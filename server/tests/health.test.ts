@@ -12,11 +12,11 @@ const __dirname = dirname(__filename);
 const migrationsFolder = join(__dirname, '../drizzle');
 
 describe('Health & Readiness API', () => {
-  let app: ReturnType<typeof buildApp>;
+  let app: Awaited<ReturnType<typeof buildApp>>;
   let pool: Pool;
 
   beforeAll(async () => {
-    app = buildApp();
+    app = await buildApp();
     pool = new Pool({ connectionString: process.env.DATABASE_URL! });
     const db = drizzle(pool);
     await migrate(db, { migrationsFolder });
