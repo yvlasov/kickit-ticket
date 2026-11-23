@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type FormEvent } from 'react';
+import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router';
 import {
@@ -116,24 +116,41 @@ function CardSkeleton(): JSX.Element {
 
 function DraggableCard({
   ticket,
+  justDraggedRef,
 }: {
   ticket: TicketRow;
+  justDraggedRef: React.MutableRefObject<boolean>;
 }): JSX.Element {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: ticket.id });
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none',
   };
+
+  // Document-level click capture to prevent anchor navigation after drag
+  useEffect(() => {
+    const clickHandler = (e: MouseEvent) => {
+      if (justDraggedRef.current) {
+        const anchor = (e.target as HTMLElement)?.closest('a');
+        if (anchor) e.preventDefault();
+      }
+    };
+    document.addEventListener('click', clickHandler, { capture: true });
+    return () => document.removeEventListener('click', clickHandler, { capture: true });
+  }, [justDraggedRef]);
 
   return (
     <a
       ref={setNodeRef}
       style={style}
+      draggable={false}
       {...attributes}
       {...listeners}
       href={`/tickets/${ticket.id}`}
       className="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"
+      onClick={(e) => { if (justDraggedRef.current) e.preventDefault(); }}
     >
       <div className="flex items-center justify-between mb-1">
         <span className="font-medium text-sm text-gray-900 truncate">
@@ -157,11 +174,13 @@ function DroppableColumn({
   tickets,
   isLoading,
   onStateChange,
+  justDraggedRef,
 }: {
   state: string;
   tickets: Array<TicketRow>;
   isLoading: boolean;
   onStateChange: (ticketId: string, newState: string) => void;
+  justDraggedRef: React.MutableRefObject<boolean>;
 }): JSX.Element {
   const { setNodeRef, isOver } = useDroppable({ id: state });
   const label = STATE_LABELS[state] ?? state;
@@ -186,7 +205,7 @@ function DroppableColumn({
       ) : (
         <div className="space-y-2 flex-1">
           {tickets.map((t) => (
-            <DraggableCard key={t.id} ticket={t} />
+            <DraggableCard key={t.id} ticket={t} justDraggedRef={justDraggedRef} />
           ))}
         </div>
       )}
@@ -284,6 +303,8 @@ export default function Board() {
     onError: setToastMessage,
   });
 
+  const justDraggedRef = useRef(false);
+
   function handleStateChange(ticketId: string, newState: string) {
     updateState.mutate({ ticketId, newState });
   }
@@ -296,6 +317,9 @@ export default function Board() {
   );
 
   function handleDragEnd(event: DragEndEvent) {
+    justDraggedRef.current = true;
+    window.setTimeout(() => { justDraggedRef.current = false; }, 100);
+
     const { active, over } = event;
     if (!over) return;
 
@@ -433,6 +457,7 @@ export default function Board() {
                   tickets={grouped[state] ?? []}
                   isLoading={false}
                   onStateChange={handleStateChange}
+                  justDraggedRef={justDraggedRef}
                 />
               ))}
             </div>

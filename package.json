@@ -9,5 +9,8 @@
   "scripts": {
     "typecheck": "npm run typecheck -w server -w web",
     "demo:data": "tsx scripts/demo-data.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.46.1"
   }
 }
