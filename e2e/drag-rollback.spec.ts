@@ -41,10 +41,22 @@ test.describe('Drag rollback', () => {
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
-    // Route PATCH requests to abort (simulate server failure)
+    // Wait for cards to appear
+    const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
+    let cardCount = 0;
+    for (let i = 0; i < 20; i++) {
+      cardCount = await cards.count();
+      if (cardCount >= 1) break;
+      await page.waitForTimeout(500);
+    }
+
+    // Route PATCH requests to return 500 (simulate server failure)
     await page.route(`**/api/tickets/${ticketId}`, async (route) => {
       if (route.request().method() === 'PATCH') {
-        await route.abort('failed');
+        await route.fulfill({
+          status: 500,
+          body: JSON.stringify({ error: { message: 'Server error' } }),
+        });
       } else {
         await route.continue();
       }
@@ -73,8 +85,8 @@ test.describe('Drag rollback', () => {
       await page.mouse.up();
     }
 
-    // Wait for the error toast to appear (any red toast with error text)
-    await expect(page.locator('[class*="bg-red-600"] p.text-sm')).toBeVisible({ timeout: 5000 });
+    // Wait for the error toast to appear
+    await expect(page.getByText('Could not move ticket')).toBeVisible({ timeout: 5000 });
 
     // Verify card snapped back to original column (still in "New")
     await expect(card).toBeVisible();

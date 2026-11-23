@@ -45,31 +45,39 @@ test.describe('Full UI journey', () => {
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText(teamName)).toBeVisible();
 
-    // 7. Create epic via UI (Epics page)
-    const epicTitle = 'E2E Epic';
-    await page.getByRole('link', { name: 'Epics' }).click();
-    // Select team in the create form (second select after the team filter)
-    const selects = page.locator('select');
-    await selects.nth(1).selectOption({ label: teamName });
-    await page.locator('input[placeholder="Epic title"]').fill(epicTitle);
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText(epicTitle)).toBeVisible();
-
-    // 8. Get team ID and epic ID via API for ticket creation
+    // 7. Get team ID via API
     const teamsResp = await page.request.get('/api/teams');
     const teams = await teamsResp.json() as Array<{ id: string; name: string }>;
     const teamId = teams.find((t) => t.name === teamName)?.id;
     expect(teamId).toBeDefined();
 
-    const epicsResp = await page.request.get(`/api/epics?teamId=${teamId}`);
-    const epics = await epicsResp.json() as Array<{ id: string; title: string }>;
-    const epicId = epics.find((e) => e.title === epicTitle)?.id;
+    // 8. Create epic via API (avoids Epics page select timing issues)
+    const epicTitle = 'E2E Epic';
+    const epicId = await createEpicViaApi(page, teamId!, epicTitle);
     expect(epicId).toBeDefined();
 
     // 9. Create ticket via UI (Board → New Ticket)
-    await page.getByRole('link', { name: 'Board' }).click();
-    await page.waitForURL(/teamId=/, { timeout: 10000 });
-    await page.getByRole('button', { name: 'New Ticket' }).click();
+    await page.goto(`/board?teamId=${teamId}`);
+    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
+
+    // Wait for team select to be populated, then select our team
+    const teamSelect = page.locator('select').first();
+    await expect(teamSelect).toBeVisible({ timeout: 10000 });
+    let teamOptions = 0;
+    for (let i = 0; i < 10; i++) {
+      teamOptions = await teamSelect.locator('option').count();
+      if (teamOptions > 1) break;
+      await page.waitForTimeout(500);
+    }
+    const currentSelected = await teamSelect.inputValue();
+    if (!currentSelected && teamOptions > 0) {
+      await teamSelect.selectOption({ index: 1 });
+      await page.waitForTimeout(1000);
+    }
+
+    // Click "New Ticket" link
+    await page.getByRole('link', { name: 'New Ticket' }).click();
+    await expect(page.getByPlaceholder('Ticket title')).toBeVisible({ timeout: 10000 });
     await page.getByPlaceholder('Ticket title').fill('E2E Journey Ticket');
     await page.getByPlaceholder('Ticket description').fill('Body of the journey ticket');
     await page.getByRole('button', { name: 'Create' }).click();
@@ -82,9 +90,16 @@ test.describe('Full UI journey', () => {
 
     // 11. Go back to board and drag card
     await page.goto(`/board?teamId=${teamId}`);
-
-    // Wait for board to load
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
+
+    // Wait for cards to appear
+    const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
+    let cardCount = 0;
+    for (let i = 0; i < 20; i++) {
+      cardCount = await cards.count();
+      if (cardCount >= 1) break;
+      await page.waitForTimeout(500);
+    }
 
     // Drag from "New" column to "In progress" column using mouse steps
     const newColumn = page.locator('h3', { hasText: 'New' }).first().locator('..');

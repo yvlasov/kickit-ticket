@@ -47,7 +47,7 @@ test.describe('Filters', () => {
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
-    // Wait for at least 4 cards to appear
+    // Wait for cards to appear
     const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
     let cardCount = 0;
     for (let i = 0; i < 20; i++) {
@@ -57,12 +57,10 @@ test.describe('Filters', () => {
     }
     expect(cardCount).toBeGreaterThanOrEqual(4);
 
-    // Count initial cards
-    const initialCount = await cards.count();
-    expect(initialCount).toBeGreaterThanOrEqual(4);
+    const initialCount = cardCount;
 
-    // Apply type filter = bug (select by value)
-    const typeSelect = page.locator('select').first();
+    // Apply type filter = bug (nth(1) = FilterBar type select, nth(0) = team select)
+    const typeSelect = page.locator('select').nth(1);
     await typeSelect.selectOption('bug');
     await page.waitForTimeout(500); // debounce
 
@@ -73,8 +71,10 @@ test.describe('Filters', () => {
     // Verify URL contains type filter
     expect(page.url()).toContain('type=bug');
 
-    // Apply epic filter = Filter Epic A (select by value)
-    const epicSelect = page.locator('select').nth(1);
+    // Apply epic filter = Filter Epic A (nth(2) = FilterBar epic select)
+    // Wait for epic option to appear first
+    await expect(page.locator(`select option[value="${epicA}"]`)).toBeVisible({ timeout: 10000 });
+    const epicSelect = page.locator('select').nth(2);
     await epicSelect.selectOption(epicA);
     await page.waitForTimeout(500);
 

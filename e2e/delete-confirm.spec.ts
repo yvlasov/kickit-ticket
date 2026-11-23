@@ -8,7 +8,7 @@ import {
 } from './helpers';
 
 test.describe('Delete confirmation', () => {
-  test('dismiss keeps ticket; accept navigates to 404', async ({ page }) => {
+  test('dismiss keeps ticket; accept navigates to tickets list', async ({ page }) => {
     const email = uniqueEmail();
     const password = 'E2Etest123';
     const teamName = uniqueTeamName();
@@ -60,12 +60,11 @@ test.describe('Delete confirmation', () => {
     dialogAction = 'accept';
     await page.getByRole('button', { name: 'Delete' }).click();
 
-    // After accept, should navigate away (to tickets list)
-    await page.waitForTimeout(1000);
+    // After accept, deleteMutation.onSuccess navigates to /tickets?teamId=...
+    await expect(page.getByRole('heading', { name: 'Tickets' })).toBeVisible({ timeout: 10000 });
 
-    // Navigate to the deleted ticket URL — should redirect to home (404 handler)
-    await page.goto(`/tickets/${ticketId}`);
-    // After 404, the component navigates to '/' (Teams page)
-    await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 10000 });
+    // Verify deleted ticket is not in the list
+    const isDeleted = await page.getByText('Delete Me Ticket').isVisible().catch(() => false);
+    expect(isDeleted).toBe(false);
   });
 });

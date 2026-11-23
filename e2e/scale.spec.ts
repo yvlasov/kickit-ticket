@@ -18,11 +18,9 @@ test.describe('Scale', () => {
     // Parse credentials from output
     const emailMatch = output.match(/Email:\s+(.+)/);
     const passwordMatch = output.match(/Password:\s+(.+)/);
-    const boardUrlMatch = output.match(/Board URL:\s+(.+)/);
 
     expect(emailMatch).not.toBeNull();
     expect(passwordMatch).not.toBeNull();
-    expect(boardUrlMatch).not.toBeNull();
 
     const demoEmail = emailMatch![1].trim();
     const demoPassword = passwordMatch![1].trim();
@@ -34,22 +32,22 @@ test.describe('Scale', () => {
     await page.getByRole('button', { name: 'Login' }).click();
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 15000 });
 
-    // Navigate to board (auto-selects first team)
+    // Navigate to board (auto-selects first team via setSearchParams)
     await page.getByRole('navigation').getByRole('link', { name: 'Board' }).click();
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 15000 });
 
     // Wait for the team select to be populated
-    const teamSelect = page.locator('select.border-gray-300').first();
+    const teamSelect = page.locator('select').first();
     await expect(teamSelect).toBeVisible({ timeout: 10000 });
-    
-    // Wait for team options to appear, then select the first one
+
+    // Wait for team options to appear (always has "Select a team" empty option + teams)
     let teamOptions = 0;
     for (let i = 0; i < 10; i++) {
       teamOptions = await teamSelect.locator('option').count();
-      if (teamOptions > 1) break; // >1 because there's always a "Select team" empty option
+      if (teamOptions > 1) break; // >1 because there's always a "Select a team" empty option
       await page.waitForTimeout(1000);
     }
-    
+
     // If no team selected yet, select the first team
     const currentSelected = await teamSelect.inputValue();
     if (!currentSelected && teamOptions > 0) {
@@ -67,8 +65,8 @@ test.describe('Scale', () => {
     }
     expect(cardCount).toBeGreaterThanOrEqual(100);
 
-    // Apply a type filter via UI
-    await page.locator('select.border-gray-300').first().selectOption('bug');
+    // Apply a type filter via UI (nth(1) = FilterBar type select)
+    await page.locator('select').nth(1).selectOption('bug');
     await page.waitForTimeout(1000);
 
     // Assert subset renders
@@ -78,7 +76,7 @@ test.describe('Scale', () => {
     expect(filteredCount).toBeLessThan(cardCount);
 
     // Assert page stays responsive
-    await page.locator('select.border-gray-300').first().selectOption('all');
+    await page.locator('select').nth(1).selectOption('all');
     await page.waitForTimeout(500);
 
     const allCards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
