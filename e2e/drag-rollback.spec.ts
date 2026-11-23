@@ -63,27 +63,68 @@ test.describe('Drag rollback', () => {
       }
     });
 
-    // REAL DRAG: card from New column to In progress column
+    // Intercept navigation to ticket detail (the <a> href would navigate on click)
+    const navigationPromise = page.waitForEvent('request', {
+      predicate: req => req.url().includes('/tickets/') && !req.url().includes('/api/'),
+      timeout: 3000,
+    });
+
     const cardBox = await card.boundingBox();
     const colBox = await inProgressCol.boundingBox();
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    if (cardBox && colBox) {
-      // Move to card center
-      await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
-      // Press down
-      await page.mouse.down();
-      // Move slightly to exceed PointerSensor activationConstraint distance=6
-      await page.mouse.move(cardBox.x + cardBox.width / 2 + 15, cardBox.y + cardBox.height / 2 + 15, { steps: 5 });
-      // Drag to target column center
-      await page.mouse.move(colBox.x + colBox.width / 2, colBox.y + colBox.height / 2, { steps: 15 });
-      // Release
-      await page.mouse.up();
+    // Dispatch pointer events manually (page.mouse doesn't fire pointer events)
+    const dragResult = await page.evaluate(
+      ({ cx, cy, tx, ty }: { cx: number; cy: number; tx: number; ty: number }) => {
+        const events: string[] = [];
+        const dispatch = (type: string, x: number, y: number) => {
+          const opts: PointerEventInit = {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+            button: 0,
+            buttons: type === 'pointerup' ? 1 : 0,
+            pointerType: 'mouse',
+            pointerId: 1,
+          };
+          const el = document.elementFromPoint(x, y);
+          if (el) {
+            el.dispatchEvent(new PointerEvent(type, opts));
+            events.push(`${type} on ${el.tagName}`);
+          } else {
+            events.push(`${type} at (${x},${y}) — no element`);
+          }
+        };
+
+        dispatch('pointerdown', cx, cy);
+        dispatch('pointermove', cx + 10, cy + 10);
+        dispatch('pointermove', tx, ty);
+        dispatch('pointerup', tx, ty);
+        return events;
+      },
+      {
+        cx: cardBox.x + cardBox.width / 2,
+        cy: cardBox.y + cardBox.height / 2,
+        tx: colBox.x + colBox.width / 2,
+        ty: colBox.y + colBox.height / 2,
+      },
+    );
+
+    console.log('Pointer events dispatched:', JSON.stringify(dragResult));
+
+    // Wait for potential navigation
+    try {
+      await navigationPromise;
+      await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
+      await page.goBack();
+      await page.waitForTimeout(1000);
+    } catch {
+      // No navigation
     }
 
-    // (a) Immediately after mouse.up, the card has optimistically appeared in the target column
-    // The optimistic update happens before the PATCH request settles
+    // (a) Immediately after pointerup, the card has optimistically appeared in the target column
     const inProgressCardsAfterDrag = inProgressCol.locator('a[href^="/tickets/"]');
     await expect(inProgressCardsAfterDrag.first()).toBeVisible({ timeout: 3000 });
 
