@@ -111,38 +111,37 @@ test.describe('Full UI journey', () => {
       timeout: 3000,
     });
 
-    // Dispatch pointer events directly on the card anchor element
-    // (elementFromPoint returns inner children, not the anchor itself)
+    // Dispatch pointer events:
+    // - pointerdown/pointermove on card anchor (activates dnd-kit drag)
+    // - pointerup on target column element (closestCorners finds the droppable)
     const dragResult = await page.evaluate(
       ({ cx, cy, tx, ty }: { cx: number; cy: number; tx: number; ty: number }) => {
         const events: string[] = [];
         const anchor = document.querySelector('a[href^="/tickets/"]') as HTMLAnchorElement;
+        const target = document.elementFromPoint(tx, ty);
 
         if (!anchor) return ['no anchor found'];
 
-        const dispatch = (type: string, x: number, y: number) => {
+        const dispatch = (type: string, x: number, y: number, onEl: Element | null) => {
           const opts: PointerEventInit = {
-            bubbles: true,
-            cancelable: true,
-            clientX: x,
-            clientY: y,
+            bubbles: true, cancelable: true,
+            clientX: x, clientY: y,
             button: 0,
             buttons: type === 'pointerup' ? 1 : 0,
-            pointerType: 'mouse',
-            pointerId: 1,
+            pointerType: 'mouse', pointerId: 1,
           };
-          anchor.dispatchEvent(new PointerEvent(type, opts));
-          events.push(`${type} on <a> at (${x},${y})`);
+          (onEl || anchor).dispatchEvent(new PointerEvent(type, opts));
+          events.push(`${type} on ${(onEl || anchor).tagName}.${(onEl || anchor).className.split(' ')[0] || ''} at (${x},${y})`);
         };
 
-        // pointerdown on card anchor
-        dispatch('pointerdown', cx, cy);
+        // pointerdown on card anchor (activates dnd-kit)
+        dispatch('pointerdown', cx, cy, anchor);
         // pointermove to exceed activation distance (distance: 6)
-        dispatch('pointermove', cx + 10, cy + 10);
+        dispatch('pointermove', cx + 10, cy + 10, anchor);
         // pointermove toward target
-        dispatch('pointermove', tx, ty);
-        // pointerup on target column
-        dispatch('pointerup', tx, ty);
+        dispatch('pointermove', tx, ty, target);
+        // pointerup on target column (closestCorners needs pointer at target)
+        dispatch('pointerup', tx, ty, target);
 
         return events;
       },
@@ -154,7 +153,7 @@ test.describe('Full UI journey', () => {
       },
     );
 
-    console.log('Pointer events on anchor:', JSON.stringify(dragResult));
+    console.log('Pointer events:', JSON.stringify(dragResult));
 
     // Wait for potential navigation (the <a> click that follows pointerup)
     try {

@@ -65,14 +65,18 @@ test.describe('Drag rollback', () => {
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    // Dispatch pointer events directly on the card anchor
+    // Dispatch pointer events:
+    // - pointerdown/pointermove on card anchor (activates dnd-kit)
+    // - pointerup on target column element (closestCorners finds the droppable)
     const dragResult = await page.evaluate(
       ({ cx, cy, tx, ty }: { cx: number; cy: number; tx: number; ty: number }) => {
         const events: string[] = [];
         const anchor = document.querySelector('a[href^="/tickets/"]') as HTMLAnchorElement;
+        const target = document.elementFromPoint(tx, ty);
+
         if (!anchor) return ['no anchor found'];
 
-        const dispatch = (type: string, x: number, y: number) => {
+        const dispatch = (type: string, x: number, y: number, onEl: Element | null) => {
           const opts: PointerEventInit = {
             bubbles: true, cancelable: true,
             clientX: x, clientY: y,
@@ -80,14 +84,14 @@ test.describe('Drag rollback', () => {
             buttons: type === 'pointerup' ? 1 : 0,
             pointerType: 'mouse', pointerId: 1,
           };
-          anchor.dispatchEvent(new PointerEvent(type, opts));
-          events.push(`${type} on <a> at (${x},${y})`);
+          (onEl || anchor).dispatchEvent(new PointerEvent(type, opts));
+          events.push(`${type} on ${(onEl || anchor).tagName}.${(onEl || anchor).className.split(' ')[0] || ''} at (${x},${y})`);
         };
 
-        dispatch('pointerdown', cx, cy);
-        dispatch('pointermove', cx + 10, cy + 10);
-        dispatch('pointermove', tx, ty);
-        dispatch('pointerup', tx, ty);
+        dispatch('pointerdown', cx, cy, anchor);
+        dispatch('pointermove', cx + 10, cy + 10, anchor);
+        dispatch('pointermove', tx, ty, target);
+        dispatch('pointerup', tx, ty, target);
         return events;
       },
       {
@@ -98,7 +102,7 @@ test.describe('Drag rollback', () => {
       },
     );
 
-    console.log('Pointer events on anchor:', JSON.stringify(dragResult));
+    console.log('Pointer events:', JSON.stringify(dragResult));
 
     // Wait for potential navigation
     try {
