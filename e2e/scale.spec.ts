@@ -15,16 +15,30 @@ test.describe('Scale', () => {
 
     console.log('Demo script output:', output);
 
-    // Parse board URL from output
+    // Parse credentials from output
+    const emailMatch = output.match(/Email:\s+(.+)/);
+    const passwordMatch = output.match(/Password:\s+(.+)/);
     const boardUrlMatch = output.match(/Board URL:\s+(.+)/);
+
+    expect(emailMatch).not.toBeNull();
+    expect(passwordMatch).not.toBeNull();
     expect(boardUrlMatch).not.toBeNull();
-    const demoBaseUrl = boardUrlMatch![1].trim();
 
-    // Navigate to the board
-    await page.goto(demoBaseUrl);
-    await expect(page.getByText('Board')).toBeVisible({ timeout: 15000 });
+    const demoEmail = emailMatch![1].trim();
+    const demoPassword = passwordMatch![1].trim();
 
-    // Wait for cards to render (up to 10s)
+    // Log in via browser
+    await page.goto('/login');
+    await page.getByLabel('Email').fill(demoEmail);
+    await page.getByLabel('Password').fill(demoPassword);
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 15000 });
+
+    // Navigate to board (auto-selects first team)
+    await page.getByRole('link', { name: 'Board' }).click();
+    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 15000 });
+
+    // Wait for cards to render
     const cards = page.locator('[class="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"]');
     let cardCount = 0;
     for (let i = 0; i < 20; i++) {
@@ -44,7 +58,7 @@ test.describe('Scale', () => {
     expect(filteredCount).toBeGreaterThan(0);
     expect(filteredCount).toBeLessThan(cardCount);
 
-    // Assert page stays responsive (can interact)
+    // Assert page stays responsive
     await page.locator('select.border-gray-300').first().selectOption('all');
     await page.waitForTimeout(500);
 

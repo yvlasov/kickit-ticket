@@ -28,7 +28,7 @@ test.describe('Comments', () => {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
-    await expect(page.getByText('Teams')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 15000 });
 
     // Create team + ticket via API
     const teamId = await createTeamViaApi(page, teamName);

@@ -38,7 +38,7 @@ test.describe('Full UI journey', () => {
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
     // Wait for the SPA to load (home page with Teams heading)
-    await expect(page.getByText('Teams')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 15000 });
 
     // 6. Create team via UI (Teams page)
     await page.getByPlaceholder('Team name').fill(teamName);
