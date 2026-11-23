@@ -132,6 +132,11 @@ test.describe('Full UI journey', () => {
     // Debug output
     const newCardsCount = await newCol.locator('a[href^="/tickets/"]').count();
     const ipCardsCount = await inProgressCol.locator('a[href^="/tickets/"]').count();
+    if (ipCardsCount === 0 && patchResponses.length === 0) {
+      // No PATCH sent - drag didn't activate. Check if we're still on board.
+      const isBoard = page.url().includes('/board');
+      throw new Error(`DEBUG: onBoard=${isBoard} URL=${page.url()} PATCH=${JSON.stringify(patchResponses)} New=${newCardsCount} IP=${ipCardsCount}`);
+    }
     if (ipCardsCount === 0) {
       throw new Error(`DEBUG: URL=${page.url()} PATCH=${JSON.stringify(patchResponses)} New=${newCardsCount} IP=${ipCardsCount}`);
     }
