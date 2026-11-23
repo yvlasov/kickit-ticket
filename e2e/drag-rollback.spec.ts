@@ -42,13 +42,9 @@ test.describe('Drag rollback', () => {
     const card = newCol.locator('a[href^="/tickets/"]').first();
     await expect(card).toBeVisible({ timeout: 10000 });
 
-    // Block navigation to ticket detail (keeps Board mounted so toast is visible)
-    await page.route(`http://app:3000/tickets/${ticketId}`, async (route) => {
-      await route.fulfill({
-        status: 200,
-        body: '<html><body><h1>Ticket</h1></body></html>',
-        contentType: 'text/html',
-      });
+    // Prevent the <a> click from navigating — keeps Board mounted so toast is visible
+    await card.evaluate((el: HTMLElement) => {
+      el.addEventListener('click', (e) => e.preventDefault(), { capture: true });
     });
 
     // Route PATCH requests to return 500
@@ -90,7 +86,6 @@ test.describe('Drag rollback', () => {
     const inProgressCardsAfterRollback = inProgressCol.locator('a[href^="/tickets/"]');
     expect(await inProgressCardsAfterRollback.count()).toBe(0);
 
-    await page.unroute(`http://app:3000/tickets/${ticketId}`);
     await page.unroute(`**/api/tickets/${ticketId}`);
   });
 });
