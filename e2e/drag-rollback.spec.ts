@@ -12,8 +12,11 @@ function columnLocator(page: any, heading: string) {
   return page.locator('h3', { hasText: heading }).first().locator('..');
 }
 
-test.describe('Drag rollback diagnostics', () => {
-  test('check if pointerup capture suppresses click', async ({ page }) => {
+test.describe('Drag diagnostics with logging', () => {
+  test('capture console logs during drag', async ({ page }) => {
+    const logs: string[] = [];
+    page.on('console', (msg) => logs.push(msg.text()));
+
     const email = uniqueEmail();
     const password = 'E2Etest123';
     const teamName = uniqueTeamName();
@@ -76,23 +79,18 @@ test.describe('Drag rollback diagnostics', () => {
 
     await page.waitForTimeout(3000);
 
+    // Print relevant logs
+    const relevantLogs = logs.filter(l =>
+      l.includes('[DraggableCard]') || l.includes('[Board]') || l.includes('onClick') || l.includes('pointerup')
+    );
+    console.log('=== RELEVANT LOGS ===');
+    relevantLogs.forEach(l => console.log(l));
+    console.log('=== END LOGS ===');
+
     console.log('URL:', page.url());
     console.log('PATCH responses:', JSON.stringify(patchResponses));
 
-    // Check card positions
-    const newCards = await newCol.locator('a[href^="/tickets/"]').count().catch(() => 0);
-    const ipCards = await inProgressCol.locator('a[href^="/tickets/"]').count().catch(() => 0);
-    console.log(`New: ${newCards}, In progress: ${ipCards}`);
-
-    // Check toast
-    const pageText = await page.textContent('body');
-    const hasToast = pageText?.includes('Could not move ticket') ?? false;
-    console.log(`Toast visible: ${hasToast}`);
-
-    await page.screenshot({ path: '/tmp/drag-diag-pointerup.png', fullPage: true });
-
-    expect(true).toBe(true);
-
     await page.unroute(`**/api/tickets/${ticketId}`);
+    expect(true).toBe(true);
   });
 });
