@@ -65,16 +65,15 @@ test.describe('Drag rollback', () => {
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    // Dispatch pointer events:
-    // - pointerdown/pointermove on card anchor (activates dnd-kit)
-    // - pointerup on target column element (closestCorners finds the droppable)
+    // Get the card's exact href and dispatch pointer events on THAT anchor
+    const cardHref = await card.getAttribute('href');
     const dragResult = await page.evaluate(
-      ({ cx, cy, tx, ty }: { cx: number; cy: number; tx: number; ty: number }) => {
+      ({ cx, cy, tx, ty, href }: { cx: number; cy: number; tx: number; ty: number; href: string }) => {
         const events: string[] = [];
-        const anchor = document.querySelector('a[href^="/tickets/"]') as HTMLAnchorElement;
+        const anchor = document.querySelector(`a[href="${href}"]`) as HTMLAnchorElement;
         const target = document.elementFromPoint(tx, ty);
 
-        if (!anchor) return ['no anchor found'];
+        if (!anchor) return ['no anchor found for ' + href];
 
         const dispatch = (type: string, x: number, y: number, onEl: Element | null) => {
           const opts: PointerEventInit = {
@@ -99,6 +98,7 @@ test.describe('Drag rollback', () => {
         cy: cardBox.y + cardBox.height / 2,
         tx: colBox.x + colBox.width / 2,
         ty: colBox.y + colBox.height / 2,
+        href: cardHref,
       },
     );
 

@@ -18,52 +18,42 @@ test.describe('Full UI journey', () => {
     const password = 'E2Etest123';
     const teamName = uniqueTeamName();
 
-    // 1. Signup via API
     const resp = await page.request.post('/api/auth/signup', {
       data: { email, password },
     });
     await expect(resp.ok()).toBe(true);
 
-    // 2. Check-email screen
     await page.goto('/check-email');
     await expect(page.getByText('Check your email')).toBeVisible();
 
-    // 3. Poll for verification token
     const token = await pollVerificationToken(page, email);
     expect(token).not.toBeNull();
 
-    // 4. Verify via URL
     await page.goto(`/verify?token=${token}`);
     await expect(page.getByText('Email verified!')).toBeVisible();
 
-    // 5. Login
     await page.goto('/login');
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible({ timeout: 15000 });
 
-    // 6. Create team via UI
     await page.getByPlaceholder('Team name').fill(teamName);
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText(teamName)).toBeVisible();
 
-    // 7. Get team ID via API
     const teamsResp = await page.request.get('/api/teams');
     const teams = await teamsResp.json() as Array<{ id: string; name: string }>;
     const teamId = teams.find((t) => t.name === teamName)?.id;
     expect(teamId).toBeDefined();
 
-    // 8. Create epic via API
     const epicTitle = 'E2E Epic';
     const epicId = await createEpicViaApi(page, teamId!, epicTitle);
     expect(epicId).toBeDefined();
 
-    // 9. Create ticket via UI
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
-    // Wait for team select to be populated
     const teamSelect = page.locator('select').first();
     await expect(teamSelect).toBeVisible({ timeout: 10000 });
     let teamOptions = 0;
@@ -78,7 +68,6 @@ test.describe('Full UI journey', () => {
       await page.waitForTimeout(1000);
     }
 
-    // Click "New Ticket" link
     await page.getByRole('link', { name: 'New Ticket' }).click();
     await expect(page.getByPlaceholder('Ticket title')).toBeVisible({ timeout: 10000 });
     await page.getByPlaceholder('Ticket title').fill('E2E Journey Ticket');
@@ -86,15 +75,13 @@ test.describe('Full UI journey', () => {
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
 
-    // 10. Get ticket ID from URL
     const ticketId = page.url().split('/').pop() ?? '';
     expect(ticketId).toBeTruthy();
 
-    // 11. REAL DRAG: card from New to In progress
+    // REAL DRAG
     await page.goto(`/board?teamId=${teamId}`);
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
-    // Wait for cards to appear
     const newCol = columnLocator(page, 'New');
     const inProgressCol = columnLocator(page, 'In progress');
     const card = newCol.locator('a[href^="/tickets/"]').first();
@@ -105,22 +92,22 @@ test.describe('Full UI journey', () => {
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    // Intercept navigation to ticket detail (the <a> href would navigate on click)
+    // Intercept navigation
     const navigationPromise = page.waitForEvent('request', {
       predicate: req => req.url().includes('/tickets/') && !req.url().includes('/api/'),
       timeout: 3000,
     });
 
-    // Dispatch pointer events:
-    // - pointerdown/pointermove on card anchor (activates dnd-kit drag)
-    // - pointerup on target column element (closestCorners finds the droppable)
+    // Get the card's href and dispatch pointer events on THAT specific anchor
+    const cardHref = await card.getAttribute('href');
     const dragResult = await page.evaluate(
-      ({ cx, cy, tx, ty }: { cx: number; cy: number; tx: number; ty: number }) => {
+      ({ cx, cy, tx, ty, href }: { cx: number; cy: number; tx: number; ty: number; href: string }) => {
         const events: string[] = [];
-        const anchor = document.querySelector('a[href^="/tickets/"]') as HTMLAnchorElement;
+        // Select by exact href to get the card, not the "New Ticket" link
+        const anchor = document.querySelector(`a[href="${href}"]`) as HTMLAnchorElement;
         const target = document.elementFromPoint(tx, ty);
 
-        if (!anchor) return ['no anchor found'];
+        if (!anchor) return ['no anchor found for ' + href];
 
         const dispatch = (type: string, x: number, y: number, onEl: Element | null) => {
           const opts: PointerEventInit = {
@@ -134,15 +121,10 @@ test.describe('Full UI journey', () => {
           events.push(`${type} on ${(onEl || anchor).tagName}.${(onEl || anchor).className.split(' ')[0] || ''} at (${x},${y})`);
         };
 
-        // pointerdown on card anchor (activates dnd-kit)
         dispatch('pointerdown', cx, cy, anchor);
-        // pointermove to exceed activation distance (distance: 6)
         dispatch('pointermove', cx + 10, cy + 10, anchor);
-        // pointermove toward target
         dispatch('pointermove', tx, ty, target);
-        // pointerup on target column (closestCorners needs pointer at target)
         dispatch('pointerup', tx, ty, target);
-
         return events;
       },
       {
@@ -150,32 +132,31 @@ test.describe('Full UI journey', () => {
         cy: cardBox.y + cardBox.height / 2,
         tx: colBox.x + colBox.width / 2,
         ty: colBox.y + colBox.height / 2,
+        href: cardHref,
       },
     );
 
     console.log('Pointer events:', JSON.stringify(dragResult));
 
-    // Wait for potential navigation (the <a> click that follows pointerup)
+    // Wait for potential navigation
     try {
       await navigationPromise;
       await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
       await page.goBack();
       await page.waitForTimeout(1000);
     } catch {
-      // No navigation — drag completed without triggering click
+      // No navigation
     }
 
     // Wait for optimistic update + PATCH request to settle
     await page.waitForTimeout(2000);
 
-    // 12. Assert the card now appears in the In-progress column
+    // Assert the card now appears in the In-progress column
     const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
     await expect(inProgressCards.first()).toBeVisible({ timeout: 5000 });
-
-    // Verify the card title is visible
     await expect(page.getByText('E2E Journey Ticket')).toBeVisible();
 
-    // 13. Page reload — card should STILL be in In progress (persisted)
+    // Page reload — card should STILL be in In progress (persisted)
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible({ timeout: 10000 });
 
