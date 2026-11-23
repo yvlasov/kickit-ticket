@@ -65,8 +65,8 @@ test.describe('Drag rollback', () => {
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    // Get the card's exact href and dispatch pointer events on THAT anchor
     const cardHref = await card.getAttribute('href');
+    // Dispatch pointer events with correct `buttons` values
     const dragResult = await page.evaluate(
       ({ cx, cy, tx, ty, href }: { cx: number; cy: number; tx: number; ty: number; href: string }) => {
         const events: string[] = [];
@@ -76,15 +76,16 @@ test.describe('Drag rollback', () => {
         if (!anchor) return ['no anchor found for ' + href];
 
         const dispatch = (type: string, x: number, y: number, onEl: Element | null) => {
+          const buttons = type === 'pointermove' ? 1 : 0;
           const opts: PointerEventInit = {
             bubbles: true, cancelable: true,
             clientX: x, clientY: y,
             button: 0,
-            buttons: type === 'pointerup' ? 1 : 0,
+            buttons,
             pointerType: 'mouse', pointerId: 1,
           };
           (onEl || anchor).dispatchEvent(new PointerEvent(type, opts));
-          events.push(`${type} on ${(onEl || anchor).tagName}.${(onEl || anchor).className.split(' ')[0] || ''} at (${x},${y})`);
+          events.push(`${type} on ${(onEl || anchor).tagName} buttons=${buttons} at (${x},${y})`);
         };
 
         dispatch('pointerdown', cx, cy, anchor);
@@ -102,7 +103,7 @@ test.describe('Drag rollback', () => {
       },
     );
 
-    console.log('Pointer events:', JSON.stringify(dragResult));
+    console.log('Pointer events (fixed buttons):', JSON.stringify(dragResult));
 
     // Wait for potential navigation
     try {

@@ -98,27 +98,31 @@ test.describe('Full UI journey', () => {
       timeout: 3000,
     });
 
-    // Get the card's href and dispatch pointer events on THAT specific anchor
+    // Dispatch pointer events with correct `buttons` values:
+    // - pointerdown: buttons=0 (button just pressed, not yet counted)
+    // - pointermove: buttons=1 (button is held)
+    // - pointerup: buttons=0 (button released — dnd-kit onEnd checks buttons!==0 and skips)
     const cardHref = await card.getAttribute('href');
     const dragResult = await page.evaluate(
       ({ cx, cy, tx, ty, href }: { cx: number; cy: number; tx: number; ty: number; href: string }) => {
         const events: string[] = [];
-        // Select by exact href to get the card, not the "New Ticket" link
         const anchor = document.querySelector(`a[href="${href}"]`) as HTMLAnchorElement;
         const target = document.elementFromPoint(tx, ty);
 
         if (!anchor) return ['no anchor found for ' + href];
 
         const dispatch = (type: string, x: number, y: number, onEl: Element | null) => {
+          // buttons: 0 for down/up, 1 for move (button held)
+          const buttons = type === 'pointermove' ? 1 : 0;
           const opts: PointerEventInit = {
             bubbles: true, cancelable: true,
             clientX: x, clientY: y,
             button: 0,
-            buttons: type === 'pointerup' ? 1 : 0,
+            buttons,
             pointerType: 'mouse', pointerId: 1,
           };
           (onEl || anchor).dispatchEvent(new PointerEvent(type, opts));
-          events.push(`${type} on ${(onEl || anchor).tagName}.${(onEl || anchor).className.split(' ')[0] || ''} at (${x},${y})`);
+          events.push(`${type} on ${(onEl || anchor).tagName} buttons=${buttons} at (${x},${y})`);
         };
 
         dispatch('pointerdown', cx, cy, anchor);
@@ -136,7 +140,7 @@ test.describe('Full UI journey', () => {
       },
     );
 
-    console.log('Pointer events:', JSON.stringify(dragResult));
+    console.log('Pointer events (fixed buttons):', JSON.stringify(dragResult));
 
     // Wait for potential navigation
     try {
