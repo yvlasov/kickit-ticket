@@ -5,5 +5,8 @@
     "server",
     "web",
     "shared"
-  ]
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck -w shared -w server -w web"
+  }
 }
