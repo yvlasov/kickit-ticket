@@ -108,14 +108,16 @@ test.describe('Filters', () => {
     expect(page.url()).toContain('epic=');
     expect(page.url()).toContain('q=One');
 
-    // Wait for cards to re-render after reload
+    // Wait for cards to re-render after reload (poll until count stabilizes)
     let afterReloadCount = 0;
-    for (let i = 0; i < 20; i++) {
-      afterReloadCount = await cards.count();
-      if (afterReloadCount > 0) break;
+    let stableCount = 0;
+    for (let i = 0; i < 30; i++) {
+      stableCount = await cards.count();
+      if (stableCount === afterReloadCount && stableCount > 0) break;
+      afterReloadCount = stableCount;
       await page.waitForTimeout(500);
     }
-    expect(afterReloadCount).toBe(searchCount);
+    expect(stableCount).toBe(searchCount);
 
     // Go back — FilterBar uses replace:true so filter changes don't create history entries.
     // goBack goes to the page before the board loaded (root), which is expected behavior.
