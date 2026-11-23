@@ -132,9 +132,11 @@ test.describe('Full UI journey', () => {
     // Debug output
     const newCardsCount = await newCol.locator('a[href^="/tickets/"]').count();
     const ipCardsCount = await inProgressCol.locator('a[href^="/tickets/"]').count();
-    await expect(page.locator('h3', { hasText: 'In progress' })).toBeVisible();
-    const ipHeadingText = await inProgressCol.locator('h3').textContent();
-    console.log(`[Journey] URL=${page.url()} PATCH=${JSON.stringify(patchResponses)} New=${newCardsCount} IP=${ipCardsCount} IPHeading=${ipHeadingText}`);
+    await page.screenshot({ path: '/tmp/journey-debug.png', fullPage: true });
+    // Force failure with debug info
+    if (ipCardsCount === 0) {
+      throw new Error(`DEBUG: URL=${page.url()} PATCH=${JSON.stringify(patchResponses)} New=${newCardsCount} IP=${ipCardsCount}`);
+    }
 
     // 12. Assert the card now appears in the In-progress column
     const inProgressCards = inProgressCol.locator('a[href^="/tickets/"]');
