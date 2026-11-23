@@ -124,12 +124,14 @@ function DraggableCard({
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none',
   };
 
   return (
     <a
       ref={setNodeRef}
       style={style}
+      draggable={false}
       {...attributes}
       {...listeners}
       href={`/tickets/${ticket.id}`}

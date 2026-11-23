@@ -54,68 +54,24 @@ test.describe('Drag rollback', () => {
       }
     });
 
-    // Intercept navigation
-    const navigationPromise = page.waitForEvent('request', {
-      predicate: req => req.url().includes('/tickets/') && !req.url().includes('/api/'),
-      timeout: 3000,
-    });
-
     const cardBox = await card.boundingBox();
     const colBox = await inProgressCol.boundingBox();
     expect(cardBox).toBeTruthy();
     expect(colBox).toBeTruthy();
 
-    const cardHref = await card.getAttribute('href');
-    // Dispatch pointer events with correct `buttons` values
-    const dragResult = await page.evaluate(
-      ({ cx, cy, tx, ty, href }: { cx: number; cy: number; tx: number; ty: number; href: string }) => {
-        const events: string[] = [];
-        const anchor = document.querySelector(`a[href="${href}"]`) as HTMLAnchorElement;
-        const target = document.elementFromPoint(tx, ty);
+    // REAL DRAG using page.mouse (CDP Input.dispatchMouseEvent fires trusted pointer events)
+    // Step 1: move to card center
+    await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+    // Step 2: press down
+    await page.mouse.down();
+    // Step 3: move slightly to exceed PointerSensor activationConstraint distance=6
+    await page.mouse.move(cardBox.x + cardBox.width / 2 + 20, cardBox.y + cardBox.height / 2, { steps: 5 });
+    // Step 4: drag to target column center
+    await page.mouse.move(colBox.x + colBox.width / 2, colBox.y + colBox.height / 2, { steps: 15 });
+    // Step 5: release
+    await page.mouse.up();
 
-        if (!anchor) return ['no anchor found for ' + href];
-
-        const dispatch = (type: string, x: number, y: number, onEl: Element | null) => {
-          const buttons = type === 'pointermove' ? 1 : 0;
-          const opts: PointerEventInit = {
-            bubbles: true, cancelable: true,
-            clientX: x, clientY: y,
-            button: 0,
-            buttons,
-            pointerType: 'mouse', pointerId: 1,
-          };
-          (onEl || anchor).dispatchEvent(new PointerEvent(type, opts));
-          events.push(`${type} on ${(onEl || anchor).tagName} buttons=${buttons} at (${x},${y})`);
-        };
-
-        dispatch('pointerdown', cx, cy, anchor);
-        dispatch('pointermove', cx + 10, cy + 10, anchor);
-        dispatch('pointermove', tx, ty, target);
-        dispatch('pointerup', tx, ty, target);
-        return events;
-      },
-      {
-        cx: cardBox.x + cardBox.width / 2,
-        cy: cardBox.y + cardBox.height / 2,
-        tx: colBox.x + colBox.width / 2,
-        ty: colBox.y + colBox.height / 2,
-        href: cardHref,
-      },
-    );
-
-    console.log('Pointer events (fixed buttons):', JSON.stringify(dragResult));
-
-    // Wait for potential navigation
-    try {
-      await navigationPromise;
-      await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
-      await page.goBack();
-      await page.waitForTimeout(1000);
-    } catch {
-      // No navigation
-    }
-
-    // (a) Optimistic update: card appears in target column
+    // (a) Optimistic update: card appears in target column (best-effort within 300ms)
     const inProgressCardsAfterDrag = inProgressCol.locator('a[href^="/tickets/"]');
     await expect(inProgressCardsAfterDrag.first()).toBeVisible({ timeout: 3000 });
 
