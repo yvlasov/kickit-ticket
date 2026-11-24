@@ -1,81 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import request from 'supertest';
 import { buildApp } from '../src/app';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
+import { fetchMailpitMessages, fetchMailpitMessageById, fetchLatestMailpitMessageFor, extractTokenFromHtml, apiRequest, signupAndVerify, cleanupTables } from './helpers.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const migrationsFolder = join(__dirname, '../drizzle');
-
-const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://mailpit:8025';
-
-async function fetchMailpitMessages(): Promise<Array<{ ID: string; To?: Array<{ Address?: string; Name?: string }> }>> {
-  const resp = await fetch(`${MAILPIT_URL}/api/v1/messages?latest=100`);
-  const data = await resp.json();
-  const arr = Array.isArray(data) ? data : (data.messages ?? []);
-  return arr;
-}
-
-async function fetchMailpitMessageById(id: string): Promise<{ HTML?: string; Text?: string } | null> {
-  const resp = await fetch(`${MAILPIT_URL}/api/v1/message/${id}`);
-  const data = await resp.json();
-  return { HTML: data.HTML, Text: data.Text };
-}
-
-async function fetchLatestMailpitMessageFor(email: string): Promise<{ HTML?: string; Text?: string } | null> {
-  const msgs = await fetchMailpitMessages();
-  const matching = msgs.filter((m) => m.To?.some((t) => (t.Address ?? t.Name ?? '').toLowerCase() === email.toLowerCase()));
-  if (matching.length === 0) return null;
-  const full = await fetchMailpitMessageById(matching[0].ID);
-  return full;
-}
-
-function extractTokenFromHtml(html: string): string | null {
-  const match = html.match(/https?:\/\/[^"]*verify[^"]*/);
-  if (!match) return null;
-  return new URL(match[0]).searchParams.get('token');
-}
-
-async function apiRequest(app: Awaited<ReturnType<typeof buildApp>>, method: string, url: string, body?: Record<string, unknown>, cookies?: string) {
-  const req = (request(app.server) as any)[method.toLowerCase()](url);
-  if (cookies) {
-    req.set('Cookie', cookies);
-  }
-  if (body) {
-    req.send(body);
-  }
-  const res = await req;
-  return {
-    statusCode: res.statusCode,
-    body: res.body,
-    headers: res.headers,
-    raw: res,
-  };
-}
-
-async function signupAndVerify(app: Awaited<ReturnType<typeof buildApp>>, p: Pool, email: string, password: string): Promise<{ id: string; cookie: string }> {
-  await apiRequest(app, 'POST', '/api/auth/signup', { email, password });
-  await new Promise((r) => setTimeout(r, 500));
-  const msg = await fetchLatestMailpitMessageFor(email);
-  expect(msg).not.toBeNull();
-  const token = extractTokenFromHtml(msg!.HTML ?? '');
-  expect(token).not.toBeNull();
-  const res = await apiRequest(app, 'POST', '/api/auth/verify', { token });
-  expect(res.statusCode).toBe(200);
-  expect(res.body).toEqual({ status: 'success' });
-  const loginRes = await apiRequest(app, 'POST', '/api/auth/login', {
-    email: email.toLowerCase(),
-    password,
-  });
-  expect(loginRes.statusCode).toBe(200);
-  const cookie = loginRes.headers['set-cookie']?.[0] ?? '';
-  const user = await p.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
-  return { id: user.rows[0].id, cookie };
-}
 
 describe('Board filters — type, epic, q (AND-combined, server-side)', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
