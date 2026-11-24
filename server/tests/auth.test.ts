@@ -265,6 +265,16 @@ describe('Auth API — Signup, Verify, Resend', () => {
     expect(res.body).toHaveProperty('message');
   });
 
+  // Test 9b: resend for malformed email → 202 (spec: always 202)
+  it('POST /api/auth/resend-verification returns 202 for malformed email', async () => {
+    const res = await apiRequest(app, 'POST', '/api/auth/resend-verification', {
+      email: 'not-an-email',
+    });
+
+    expect(res.statusCode).toBe(202);
+    expect(res.body).toHaveProperty('message');
+  });
+
   // Test 10: used token remains 'used' after resend (not 'invalid')
   it('POST /api/auth/verify returns used for token used before resend', async () => {
     // Signup

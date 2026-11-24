@@ -1,54 +1,11 @@
 import { useState, type FormEvent, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router';
 import { apiFetch, handleUnauthorized } from '../api';
-
-interface TicketRow {
-  id: string;
-  teamId: string;
-  type: string;
-  state: string;
-  epicId: string | null;
-  epicTitle: string | null;
-  title: string;
-  body: string | null;
-  createdBy: string;
-  createdByEmail: string;
-  createdAt: string;
-  modifiedAt: string;
-  teamName: string;
-}
-
-interface CommentRow {
-  id: string;
-  body: string;
-  authorId: string;
-  authorEmail: string;
-  createdAt: string;
-}
-
-interface EpicRow {
-  id: string;
-  title: string;
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function stateLabel(state: string): string {
-  return state.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function typeBadge(type: string): string {
-  const colors: Record<string, string> = {
-    bug: 'bg-red-100 text-red-800',
-    feature: 'bg-green-100 text-green-800',
-    fix: 'bg-blue-100 text-blue-800',
-  };
-  return colors[type] || 'bg-gray-100 text-gray-800';
-}
+import { useTicket, useTicketEpics } from '../hooks/useTicket';
+import { EditForm } from '../components/TicketEditForm';
+import { DetailView } from '../components/TicketDetailView';
+import { CommentsSection } from '../components/CommentsSection';
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
@@ -60,37 +17,14 @@ export default function TicketDetail() {
   const [editEpicId, setEditEpicId] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editBody, setEditBody] = useState('');
-  const [apiError, setApiError] = useState<string | null>(null);
   const [editApiError, setEditApiError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({});
   const [noChanges, setNoChanges] = useState(false);
   const [commentBody, setCommentBody] = useState('');
   const [commentApiError, setCommentApiError] = useState<string | null>(null);
 
-  const { data: ticket, isLoading } = useQuery({
-    queryKey: ['ticket', id],
-    queryFn: async () => {
-      const res = await apiFetch(`/api/tickets/${id}`, { method: 'GET' });
-      if (res.status === 401) { handleUnauthorized(); throw new Error('Unauthorized'); }
-      if (res.status === 404) { navigate('/'); throw new Error('Not found'); }
-      if (!res.ok) { throw new Error('Failed to fetch ticket'); }
-      return res.json() as Promise<{ ticket: TicketRow; comments: Array<CommentRow> }>;
-    },
-    retry: false,
-  });
-
-  const { data: epics } = useQuery({
-    queryKey: ['epics', ticket?.ticket?.teamId],
-    queryFn: async () => {
-      if (!ticket?.ticket?.teamId) return [];
-      const res = await apiFetch(`/api/epics?teamId=${ticket.ticket.teamId}`, { method: 'GET' });
-      if (res.status === 401) { handleUnauthorized(); throw new Error('Unauthorized'); }
-      return res.json() as Promise<Array<EpicRow>>;
-    },
-    enabled: !!ticket?.ticket?.teamId,
-    retry: false,
-  });
+  const { data: ticket, isLoading } = useTicket(id);
+  const { data: epics } = useTicketEpics(ticket?.ticket?.teamId);
 
   // Sync edit form with ticket data
   useEffect(() => {
@@ -121,7 +55,6 @@ export default function TicketDetail() {
       if (!res.ok) {
         const bodyData = await res.json();
         if (res.status === 200) {
-          // No-op: server returns 200 with unchanged data
           setNoChanges(true);
           throw new Error('no-op');
         }
@@ -242,157 +175,38 @@ export default function TicketDetail() {
           </div>
         </div>
 
-        {/* Edit form */}
         {editMode && (
-          <form onSubmit={handleEdit} className="bg-white rounded-lg shadow-md p-6 mb-6 space-y-4">
-            {editApiError && editApiError !== 'no-op' && (
-              <div className="bg-red-50 border border-red-200 text-red-700 rounded p-3 text-sm">{editApiError}</div>
-            )}
-            {noChanges && (
-              <div className="bg-gray-50 border border-gray-200 text-gray-600 rounded p-3 text-sm">No changes detected.</div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                <select value={editType} onChange={(e) => setEditType(e.target.value)} className="border rounded px-3 py-2 text-sm w-full border-gray-300">
-                  <option value="bug">Bug</option>
-                  <option value="feature">Feature</option>
-                  <option value="fix">Fix</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                <select value={editState} onChange={(e) => setEditState(e.target.value)} className="border rounded px-3 py-2 text-sm w-full border-gray-300">
-                  <option value="new">New</option>
-                  <option value="ready_for_implementation">Ready for Implementation</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="ready_for_acceptance">Ready for Acceptance</option>
-                  <option value="done">Done</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Epic</label>
-              <select
-                value={editEpicId}
-                onChange={(e) => setEditEpicId(e.target.value)}
-                className="border rounded px-3 py-2 text-sm w-full border-gray-300"
-              >
-                <option value="">No epic</option>
-                {epics?.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
-              </select>
-              {editFieldErrors.epicId && <p className="text-red-600 text-xs mt-1">{editFieldErrors.epicId}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-              <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className={`border rounded px-3 py-2 text-sm w-full ${editFieldErrors.title ? 'border-red-500' : 'border-gray-300'}`} />
-              {editFieldErrors.title && <p className="text-red-600 text-xs mt-1">{editFieldErrors.title}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Body *</label>
-              <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={4} className={`border rounded px-3 py-2 text-sm w-full ${editFieldErrors.body ? 'border-red-500' : 'border-gray-300'}`} />
-              {editFieldErrors.body && <p className="text-red-600 text-xs mt-1">{editFieldErrors.body}</p>}
-            </div>
-
-            <div className="flex gap-2">
-              <button type="submit" disabled={editMutation.isPending} className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                {editMutation.isPending ? 'Saving...' : 'Save'}
-              </button>
-              <button type="button" onClick={cancelEdit} className="text-gray-600 text-sm hover:underline">Cancel</button>
-            </div>
-          </form>
+          <EditForm
+            editType={editType}
+            editState={editState}
+            editEpicId={editEpicId}
+            editTitle={editTitle}
+            editBody={editBody}
+            editApiError={editApiError}
+            editFieldErrors={editFieldErrors}
+            noChanges={noChanges}
+            epics={epics ?? []}
+            editMutationPending={editMutation.isPending}
+            onTypeChange={setEditType}
+            onStateChange={setEditState}
+            onEpicChange={setEditEpicId}
+            onTitleChange={setEditTitle}
+            onBodyChange={setEditBody}
+            onSubmit={handleEdit}
+            onCancel={cancelEdit}
+          />
         )}
 
-        {/* Detail view */}
-        {!editMode && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <span className="text-sm text-gray-500">Type</span>
-                <div className="mt-1">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${typeBadge(t.type)}`}>{t.type}</span>
-                </div>
-              </div>
-              <div>
-                <span className="text-sm text-gray-500">State</span>
-                <p className="mt-1 text-sm font-medium">{stateLabel(t.state)}</p>
-              </div>
-            </div>
+        {!editMode && <DetailView ticket={t} />}
 
-            {t.epicTitle && (
-              <div>
-                <span className="text-sm text-gray-500">Epic</span>
-                <p className="mt-1 text-sm">{t.epicTitle}</p>
-              </div>
-            )}
-
-            <div>
-              <span className="text-sm text-gray-500">Team</span>
-              <p className="mt-1 text-sm">{t.teamName}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <span className="text-sm text-gray-500">Created by</span>
-                <p className="mt-1 text-sm">{t.createdByEmail}</p>
-              </div>
-              <div>
-                <span className="text-sm text-gray-500">Created at</span>
-                <p className="mt-1 text-sm">{formatDate(t.createdAt)}</p>
-              </div>
-            </div>
-
-            <div>
-              <span className="text-sm text-gray-500">Modified at</span>
-              <p className="mt-1 text-sm">{formatDate(t.modifiedAt)}</p>
-            </div>
-
-            <div>
-              <span className="text-sm text-gray-500">Body</span>
-              <div className="mt-1 text-sm whitespace-pre-wrap">{t.body ?? '—'}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Comments */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-lg font-semibold mb-4">Comments</h2>
-          {ticket.comments.length === 0 ? (
-            <p className="text-gray-500 text-sm">No comments yet.</p>
-          ) : (
-            <div className="space-y-3 mb-4">
-              {ticket.comments.map((c) => (
-                <div key={c.id} className="border-b pb-3 last:border-b-0">
-                  <div className="text-sm text-gray-500 mb-1">{c.authorEmail} · {formatDate(c.createdAt)}</div>
-                  <div className="text-sm whitespace-pre-wrap">{c.body}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          <form onSubmit={handleComment} className="space-y-3">
-            <textarea
-              value={commentBody}
-              onChange={(e) => setCommentBody(e.target.value)}
-              placeholder="Add a comment..."
-              rows={3}
-              className="border rounded px-3 py-2 text-sm w-full border-gray-300"
-            />
-            {commentApiError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 rounded p-3 text-sm">{commentApiError}</div>
-            )}
-            <button
-              type="submit"
-              disabled={commentMutation.isPending}
-              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-            >
-              {commentMutation.isPending ? 'Adding...' : 'Add comment'}
-            </button>
-          </form>
-        </div>
+        <CommentsSection
+          comments={ticket.comments}
+          commentBody={commentBody}
+          commentApiError={commentApiError}
+          commentMutationPending={commentMutation.isPending}
+          onCommentBodyChange={setCommentBody}
+          onCommentSubmit={handleComment}
+        />
       </div>
     </div>
   );

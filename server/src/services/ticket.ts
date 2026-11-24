@@ -1,7 +1,9 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import { Pool } from 'pg';
-import { tickets, teams, users, epics, comments } from '../db/schema.ts';
+import { tickets, teams, users, epics } from '../db/schema.ts';
+import { listCommentsForTicket, type CommentRow } from './comment.ts';
+import { enrichTicket } from './ticket-enrich.ts';
 
 export interface TicketRow {
   id: string;
@@ -19,14 +21,13 @@ export interface TicketRow {
   teamName: string;
 }
 
-export interface CommentRow {
-  id: string;
-  ticketId: string;
-  body: string;
-  authorId: string;
-  authorEmail: string;
-  createdAt: Date;
-}
+export type EditTicketResult =
+  | { kind: 'ok'; ticket: TicketRow }
+  | { kind: 'error'; code: string; message: string };
+
+export type CreateTicketResult =
+  | { kind: 'ok'; ticket: TicketRow }
+  | { kind: 'error'; code: string; message: string };
 
 export interface ListTicketsFilters {
   type?: string;
@@ -99,7 +100,20 @@ export async function createTicket(
   title: string,
   body: string | null,
   createdBy: string,
-): Promise<TicketRow> {
+): Promise<CreateTicketResult> {
+  // Epic-team validation: if epic is supplied, it must belong to the team
+  if (epicId !== null && epicId !== undefined) {
+    const epicTeam = await db
+      .select({ teamId: epics.teamId })
+      .from(epics)
+      .where(eq(epics.id, epicId))
+      .limit(1)
+      .then((r) => r[0]);
+    if (!epicTeam || epicTeam.teamId !== teamId) {
+      return { kind: 'error', code: 'VALIDATION_ERROR', message: 'Epic does not belong to the specified team' };
+    }
+  }
+
   const row = await db
     .insert(tickets)
     .values({ teamId, type, state, epicId, title, body, createdBy } as typeof tickets.$inferInsert)
@@ -117,27 +131,7 @@ export async function createTicket(
     })
     .then((rows) => rows[0]);
 
-  const [teamRow, epicRow, userRow] = await Promise.all([
-    db.select({ name: teams.name }).from(teams).where(eq(teams.id, teamId)).limit(1).then((r) => r[0]),
-    epicId ? db.select({ title: epics.title }).from(epics).where(eq(epics.id, epicId)).limit(1).then((r) => r[0] ?? null) : Promise.resolve(null),
-    db.select({ email: users.email }).from(users).where(eq(users.id, createdBy)).limit(1).then((r) => r[0]),
-  ]);
-
-  return {
-    id: row.id,
-    teamId: row.teamId,
-    type: row.type,
-    state: row.state,
-    epicId: row.epicId,
-    epicTitle: epicRow?.title ?? null,
-    title: row.title,
-    body: row.body,
-    createdBy: row.createdBy,
-    createdByEmail: userRow?.email ?? '',
-    createdAt: row.createdAt,
-    modifiedAt: row.modifiedAt,
-    teamName: teamRow?.name ?? '',
-  };
+  return { kind: 'ok', ticket: await enrichTicket(db, row) };
 }
 
 export async function getTicket(
@@ -167,36 +161,22 @@ export async function getTicket(
     .where(eq(tickets.id, ticketId))
     .limit(1);
 
-  const ticket = ticketRows[0]
+  const raw = ticketRows[0];
+  const ticket = raw
     ? {
-        ...ticketRows[0],
-        createdByEmail: (ticketRows[0].createdByEmail as string) ?? '',
-        teamName: (ticketRows[0].teamName as string) ?? '',
-        epicTitle: (ticketRows[0].epicTitle as string) ?? null,
+        ...raw,
+        createdByEmail: (raw.createdByEmail as string) ?? '',
+        teamName: (raw.teamName as string) ?? '',
+        epicTitle: (raw.epicTitle as string) ?? null,
       }
     : null;
 
-  const rawComments = await db
-    .select({
-      id: comments.id,
-      ticketId: comments.ticketId,
-      body: comments.body,
-      authorId: comments.authorId,
-      authorEmail: users.email,
-      createdAt: comments.createdAt,
-    })
-    .from(comments)
-    .leftJoin(users, eq(users.id, comments.authorId))
-    .where(eq(comments.ticketId, ticketId))
-    .orderBy(comments.createdAt);
+  if (!ticket) {
+    return { ticket: null, comments: [] };
+  }
 
-  const resultComments: Array<CommentRow> = rawComments.map((c) => ({
-    ...c,
-    ticketId: (c.ticketId as string),
-    authorEmail: (c.authorEmail as string) ?? '',
-  }));
-
-  return { ticket, comments: resultComments };
+  const comments = await listCommentsForTicket(db, ticketId);
+  return { ticket, comments };
 }
 
 export async function editTicket(
@@ -209,7 +189,7 @@ export async function editTicket(
   newTitle: string | undefined,
   newBody: string | null | undefined,
   newState: 'new' | 'ready_for_implementation' | 'in_progress' | 'ready_for_acceptance' | 'done' | undefined,
-): Promise<TicketRow | null> {
+): Promise<EditTicketResult> {
   const current = await db
     .select({
       id: tickets.id,
@@ -228,12 +208,34 @@ export async function editTicket(
     .limit(1)
     .then((rows) => rows[0]);
 
-  if (!current) return null;
+  if (!current) return { kind: 'error', code: 'NOT_FOUND', message: 'Ticket not found' };
 
-  // Normalize: treat undefined as "not provided" for diffing
-  const normalizedTitle = newTitle !== undefined ? newTitle : undefined;
-  const normalizedBody = newBody !== undefined ? newBody : undefined;
-  const normalizedEpicId = newEpicId !== undefined ? newEpicId : undefined;
+  // Determine target team for epic validation
+  const targetTeamId = newTeamId ?? current.teamId;
+
+  // Team-change epic auto-null: if team changes and epicId not supplied, null it
+  const effectiveEpicId =
+    (newTeamId !== undefined && newTeamId !== current.teamId && newEpicId === undefined)
+      ? null
+      : newEpicId;
+
+  // Epic-team validation: if epic is supplied (after auto-null), it must belong to target team
+  if (effectiveEpicId !== undefined && effectiveEpicId !== null) {
+    const epicTeam = await db
+      .select({ teamId: epics.teamId })
+      .from(epics)
+      .where(eq(epics.id, effectiveEpicId))
+      .limit(1)
+      .then((r) => r[0]);
+    if (!epicTeam || epicTeam.teamId !== targetTeamId) {
+      return { kind: 'error', code: 'VALIDATION_ERROR', message: 'Epic does not belong to the specified team' };
+    }
+  }
+
+  // Normalize: treat undefined as "not provided" for diffing; trim title/body in service per spec
+  const normalizedTitle = newTitle !== undefined ? newTitle.trim() : undefined;
+  const normalizedBody = newBody !== undefined ? (newBody === null ? null : newBody.trim()) : undefined;
+  const normalizedEpicId = effectiveEpicId !== undefined ? effectiveEpicId : undefined;
   const normalizedTeamId = newTeamId !== undefined ? newTeamId : undefined;
 
   // No-op diff: exact equality after normalization
@@ -241,32 +243,11 @@ export async function editTicket(
   const isTeamSame = normalizedTeamId === undefined || current.teamId === normalizedTeamId;
   const isEpicSame = normalizedEpicId === undefined || current.epicId === normalizedEpicId;
   const isTitleSame = normalizedTitle === undefined || current.title === normalizedTitle;
-  const isBodySame = normalizedBody === undefined || current.body === normalizedBody;
+  const isBodySame = normalizedBody === undefined || normalizedBody === null || current.body === normalizedBody;
   const isStateSame = newState === undefined || current.state === newState;
 
   if (isTypeSame && isTeamSame && isEpicSame && isTitleSame && isBodySame && isStateSame) {
-    // No change: return current row with extras
-    const [teamRow, epicRow, userRow] = await Promise.all([
-      db.select({ name: teams.name }).from(teams).where(eq(teams.id, current.teamId)).limit(1).then((r) => r[0]),
-      current.epicId ? db.select({ title: epics.title }).from(epics).where(eq(epics.id, current.epicId)).limit(1).then((r) => r[0] ?? null) : Promise.resolve(null),
-      db.select({ email: users.email }).from(users).where(eq(users.id, current.createdBy)).limit(1).then((r) => r[0]),
-    ]);
-
-    return {
-      id: current.id,
-      teamId: current.teamId,
-      type: current.type,
-      state: current.state,
-      epicId: current.epicId,
-      epicTitle: epicRow?.title ?? null,
-      title: current.title,
-      body: current.body,
-      createdBy: current.createdBy,
-      createdByEmail: userRow?.email ?? '',
-      createdAt: current.createdAt,
-      modifiedAt: current.modifiedAt,
-      teamName: teamRow?.name ?? '',
-    };
+    return { kind: 'ok', ticket: await enrichTicket(db, current) };
   }
 
   // Build update set
@@ -275,7 +256,7 @@ export async function editTicket(
   if (normalizedTeamId !== undefined) updateSet.teamId = normalizedTeamId;
   if (normalizedEpicId !== undefined) updateSet.epicId = normalizedEpicId;
   if (normalizedTitle !== undefined) updateSet.title = normalizedTitle;
-  if (normalizedBody !== undefined) updateSet.body = normalizedBody;
+  if (normalizedBody !== undefined && normalizedBody !== null) updateSet.body = normalizedBody;
   if (newState !== undefined) updateSet.state = newState;
   updateSet.modifiedAt = new Date();
 
@@ -297,27 +278,7 @@ export async function editTicket(
     })
     .then((rows) => rows[0]);
 
-  const [teamRow, epicRow, userRow] = await Promise.all([
-    db.select({ name: teams.name }).from(teams).where(eq(teams.id, row.teamId)).limit(1).then((r) => r[0]),
-    row.epicId ? db.select({ title: epics.title }).from(epics).where(eq(epics.id, row.epicId)).limit(1).then((r) => r[0] ?? null) : Promise.resolve(null),
-    db.select({ email: users.email }).from(users).where(eq(users.id, row.createdBy)).limit(1).then((r) => r[0]),
-  ]);
-
-  return {
-    id: row.id,
-    teamId: row.teamId,
-    type: row.type,
-    state: row.state,
-    epicId: row.epicId,
-    epicTitle: epicRow?.title ?? null,
-    title: row.title,
-    body: row.body,
-    createdBy: row.createdBy,
-    createdByEmail: userRow?.email ?? '',
-    createdAt: row.createdAt,
-    modifiedAt: row.modifiedAt,
-    teamName: teamRow?.name ?? '',
-  };
+  return { kind: 'ok', ticket: await enrichTicket(db, row) };
 }
 
 export async function deleteTicket(
@@ -328,37 +289,5 @@ export async function deleteTicket(
   return true;
 }
 
-export async function addComment(
-  db: ReturnType<typeof drizzle>,
-  ticketId: string,
-  authorId: string,
-  body: string,
-): Promise<CommentRow> {
-  const row = await db
-    .insert(comments)
-    .values({ ticketId, authorId, body } as typeof comments.$inferInsert)
-    .returning({
-      id: comments.id,
-      ticketId: comments.ticketId,
-      body: comments.body,
-      authorId: comments.authorId,
-      createdAt: comments.createdAt,
-    })
-    .then((r) => r[0]);
-
-  const authorRow = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(eq(users.id, authorId))
-    .limit(1)
-    .then((r) => r[0]);
-
-  return {
-    id: row.id,
-    ticketId,
-    body: row.body,
-    authorId: row.authorId,
-    authorEmail: (authorRow?.email as string) ?? '',
-    createdAt: row.createdAt,
-  };
-}
+export { addComment } from './comment.ts';
+export type { CommentRow } from './comment.ts';

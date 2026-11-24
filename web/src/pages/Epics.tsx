@@ -1,63 +1,9 @@
 import { useState, type FormEvent } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, handleUnauthorized } from '../api';
-
-interface TeamRow {
-  id: string;
-  name: string;
-}
-
-interface EpicRow {
-  id: string;
-  teamId: string;
-  title: string;
-  description: string | null;
-  createdAt: string;
-  modifiedAt: string;
-  ticketCount: number;
-}
-
-function useTeams() {
-  return useQuery({
-    queryKey: ['teams'],
-    queryFn: async () => {
-      const res = await apiFetch('/api/teams', { method: 'GET' });
-      if (res.status === 401) {
-        handleUnauthorized();
-        throw new Error('Unauthorized');
-      }
-      if (!res.ok) {
-        throw new Error('Failed to fetch teams');
-      }
-      return res.json() as Promise<Array<TeamRow>>;
-    },
-    retry: false,
-  });
-}
-
-function useEpics(teamId: string | null) {
-  const url = teamId ? `/api/epics?teamId=${teamId}` : '/api/epics';
-  return useQuery({
-    queryKey: ['epics', teamId],
-    queryFn: async () => {
-      const res = await apiFetch(url, { method: 'GET' });
-      if (res.status === 401) {
-        handleUnauthorized();
-        throw new Error('Unauthorized');
-      }
-      if (!res.ok) {
-        throw new Error('Failed to fetch epics');
-      }
-      return res.json() as Promise<Array<EpicRow>>;
-    },
-    retry: false,
-  });
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
+import { useTeams } from '../hooks/useTeams';
+import { useEpics, formatDate, type EpicRow } from '../hooks/useEpics';
+import { EpicRowComponent } from '../components/EpicRow';
 
 export default function Epics() {
   const queryClient = useQueryClient();
@@ -180,7 +126,7 @@ export default function Epics() {
     createMutation.mutate();
   }
 
-  function startEdit(epic: EpicRow, teamName: string) {
+  function startEdit(epic: EpicRow) {
     setEditingId(epic.id);
     setEditingTitle(epic.title);
     setEditingDescription(epic.description ?? '');
@@ -307,91 +253,25 @@ export default function Epics() {
               </thead>
               <tbody>
                 {epics.map((epic) => (
-                  <tr key={epic.id} className="border-b last:border-b-0">
-                    <td className="px-4 py-2">
-                      {editingId === epic.id ? (
-                        <form onSubmit={(e) => handleEdit(e, epic.id)} className="space-y-1">
-                          <input
-                            type="text"
-                            value={editingTitle}
-                            onChange={(e) => setEditingTitle(e.target.value)}
-                            className={`border rounded px-2 py-1 text-sm w-full ${editFieldErrors.title ? 'border-red-500' : 'border-gray-300'}`}
-                          />
-                          {editFieldErrors.title && <p className="text-red-600 text-xs">{editFieldErrors.title}</p>}
-                          <textarea
-                            value={editingDescription}
-                            onChange={(e) => setEditingDescription(e.target.value)}
-                            placeholder="Description"
-                            rows={2}
-                            className="border rounded px-2 py-1 text-sm w-full border-gray-300"
-                          />
-                          <div className="flex gap-1">
-                            <button
-                              type="submit"
-                              disabled={editMutation.isPending}
-                              className="text-green-600 text-sm hover:underline disabled:opacity-50"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setEditingId(null); setEditingTitle(''); setEditingDescription(''); setEditError(null); setEditFieldErrors({}); }}
-                              className="text-gray-500 text-sm hover:underline"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      ) : (
-                        <div>
-                          <span className="font-medium">{epic.title}</span>
-                          {epic.description && <p className="text-sm text-gray-500 mt-1">{epic.description}</p>}
-                        </div>
-                      )}
-                      {editError && editingId === epic.id && (
-                        <p className="text-red-600 text-xs mt-1">{editError}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-sm">
-                      {editingId === epic.id ? (
-                        <input
-                          type="text"
-                          value={getTeamName(editEpicTeamId) ?? ''}
-                          disabled
-                          className="border rounded px-2 py-1 text-sm w-full bg-gray-100 text-gray-500 border-gray-300"
-                        />
-                      ) : (
-                        <span className="text-gray-700">{getTeamName(epic.teamId) ?? '?'}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-sm">{epic.ticketCount}</td>
-                    <td className="px-4 py-2 text-sm text-gray-600">{formatDate(epic.modifiedAt)}</td>
-                    <td className="px-4 py-2 text-right">
-                      {editingId !== epic.id && (
-                        <>
-                          <button
-                            onClick={() => startEdit(epic, getTeamName(epic.teamId) ?? '')}
-                            className="text-blue-600 text-sm hover:underline mr-3"
-                            disabled={deleteMutation.isPending}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(epic.id)}
-                            disabled={deleteMutation.isPending || epic.ticketCount > 0}
-                            className={`text-sm ${
-                              epic.ticketCount > 0
-                                ? 'text-gray-400 cursor-not-allowed'
-                                : 'text-red-600 hover:underline'
-                            } disabled:opacity-50`}
-                            title={epic.ticketCount > 0 ? `Cannot delete: ${epic.ticketCount} ticket(s) reference this epic` : ''}
-                          >
-                            {epic.ticketCount > 0 ? `Delete (${epic.ticketCount}t)` : 'Delete'}
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
+                  <EpicRowComponent
+                    key={epic.id}
+                    epic={epic}
+                    teamName={getTeamName(epic.teamId)}
+                    editingId={editingId}
+                    editingTitle={editingTitle}
+                    editingDescription={editingDescription}
+                    editFieldErrors={editFieldErrors}
+                    editError={editError}
+                    deletePending={deleteMutation.isPending}
+                    onEdit={() => startEdit(epic)}
+                    onSave={handleEdit}
+                    onCancel={() => { setEditingId(null); setEditingTitle(''); setEditingDescription(''); setEditError(null); setEditFieldErrors({}); }}
+                    onDelete={() => handleDelete(epic.id)}
+                    onTitleChange={setEditingTitle}
+                    onDescriptionChange={setEditingDescription}
+                    editMutationPending={editMutation.isPending}
+                    deleteMutationPending={deleteMutation.isPending}
+                  />
                 ))}
               </tbody>
             </table>

@@ -6,7 +6,7 @@ A hackathon-grade Kanban ticket tracker: a single-page React frontend, a Fastify
 
 | Tier | Technology |
 | --- | --- |
-| Frontend | React 18 + Vite + TypeScript, TanStack Query, react-router, Tailwind + shadcn/ui, @dnd-kit |
+| Frontend | React 18 + Vite + TypeScript, TanStack Query, react-router, Tailwind CSS, @dnd-kit |
 | Backend | Node 22 + TypeScript, Fastify, Drizzle ORM, PostgreSQL 17 |
 | Mail | Nodemailer → configurable SMTP (Mailpit by default) |
 | Auth | Argon2id passwords, opaque DB sessions, hashed single-use verification tokens |

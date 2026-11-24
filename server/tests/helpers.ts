@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test as SupertestTest, type Response as SupertestResponse } from 'supertest';
 import { buildApp } from '../src/app';
 import { Pool } from 'pg';
 
@@ -31,21 +31,37 @@ export function extractTokenFromHtml(html: string): string | null {
   return new URL(match[0]).searchParams.get('token');
 }
 
+type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+
+export interface ApiResult {
+  statusCode: number;
+  body: any;
+  headers: Record<string, string | string[]>;
+  raw: SupertestResponse;
+}
+
 export async function apiRequest(
   app: Awaited<ReturnType<typeof buildApp>>,
-  method: string,
+  method: HttpMethod,
   url: string,
   body?: Record<string, unknown>,
   cookies?: string,
-) {
-  const req = (request(app.server) as any)[method.toLowerCase()](url);
+): Promise<ApiResult> {
+  const agent = request(app.server);
+  const req: SupertestTest = method === 'GET'
+    ? agent.get(url)
+    : method === 'POST'
+      ? agent.post(url)
+      : method === 'PATCH'
+        ? agent.patch(url)
+        : agent.delete(url);
   if (cookies) {
     req.set('Cookie', cookies);
   }
   if (body) {
     req.send(body);
   }
-  const res = await req;
+  const res: SupertestResponse = await req;
   return {
     statusCode: res.statusCode,
     body: res.body,
