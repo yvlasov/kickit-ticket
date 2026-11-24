@@ -36,7 +36,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   const sessionModule = await import('./plugins/session.ts');
   await app.register(sessionModule.sessionGuardPlugin);
 
-  const routesModule = await import('./routes.ts');
+  const routesModule = await import('./routes/index.ts');
   await app.register(routesModule.default, { prefix: '/api' });
 
   app.setNotFoundHandler(async (req, reply) => {
