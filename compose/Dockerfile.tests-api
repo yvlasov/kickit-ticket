@@ -1,0 +1,26 @@
+FROM node:22-slim
+
+WORKDIR /app
+
+# Copy root and workspace package files
+COPY package.json package-lock.json* ./
+COPY shared/package.json shared/
+COPY server/package.json server/
+COPY shared/tsconfig.json shared/
+COPY server/tsconfig.json server/
+
+RUN npm ci --ignore-scripts
+
+# Copy server source needed for tests
+COPY server/src/ server/src/
+COPY server/drizzle/ server/drizzle/
+
+# Copy shared source (needed for @kickit/shared imports)
+COPY shared/src/ shared/src/
+
+# Copy test files
+COPY server/tests/ server/tests/
+COPY server/vitest.config.ts server/
+
+WORKDIR /app/server
+CMD ["npx", "vitest", "run"]

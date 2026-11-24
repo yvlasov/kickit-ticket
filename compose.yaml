@@ -1,0 +1,90 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: compose/Dockerfile.app
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgresql://kickit:kickit@postgres:5432/kickit
+      PORT: "3000"
+      PUBLIC_BASE_URL: http://localhost:${APP_PORT:-3000}
+      SESSION_COOKIE_NAME: kickit_session
+      SESSION_TTL_HOURS: "168"
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      SMTP_SECURE: "false"
+      SMTP_STARTTLS: "false"
+      SMTP_FROM: no-reply@kickit.local
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: kickit
+      POSTGRES_PASSWORD: kickit
+      POSTGRES_DB: kickit
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kickit"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+
+  tests-api:
+    build:
+      context: .
+      dockerfile: compose/Dockerfile.tests-api
+    environment:
+      DATABASE_URL: postgresql://kickit:kickit@postgres-test:5432/kickit_test
+      MAILPIT_URL: http://mailpit:8025
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    profiles:
+      - test
+
+  postgres-test:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: kickit
+      POSTGRES_PASSWORD: kickit
+      POSTGRES_DB: kickit_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kickit"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - test
+
+  tests-e2e:
+    build:
+      context: .
+      dockerfile: compose/Dockerfile.tests-e2e
+    environment:
+      BASE_URL: http://app:3000
+      MAILPIT_URL: http://mailpit:8025
+    depends_on:
+      - app
+      - mailpit
+    profiles:
+      - test
+
+volumes:
+  pgdata:

@@ -1,6 +1,6 @@
-# OS
+node_modules/
+dist/
+.env
 .DS_Store
-
-# Agent
 .agent/
 settings.local.json
