@@ -90,25 +90,20 @@ export default async function routes(app: FastifyInstance) {
   });
 
   app.post('/auth/resend-verification', async (request, reply) => {
-    const parseResult = resendSchema.safeParse(request.body);
-    if (!parseResult.success) {
-      const details = parseResult.error.errors.map((e) => ({
-        field: e.path.join('.'),
-        message: e.message,
-      }));
-      return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details } });
-    }
-
     const url = process.env.DATABASE_URL;
     if (!url) {
-      return reply.code(500).send({ error: { code: 'NOT_CONFIGURED', message: 'DATABASE_URL not set' } });
+      return reply.code(202).send({ message: 'Verification email sent' });
     }
 
     const pool = new Pool({ connectionString: url });
     const db = drizzle(pool);
 
     try {
-      await resendVerification(db, parseResult.data.email);
+      // Spec: always 202 — even on zod parse failure, return 202 with same body
+      const parseResult = resendSchema.safeParse(request.body);
+      if (parseResult.success) {
+        await resendVerification(db, parseResult.data.email);
+      }
       return reply.code(202).send({ message: 'Verification email sent' });
     } finally {
       await pool.end();
@@ -576,6 +571,12 @@ export default async function routes(app: FastifyInstance) {
     const db = drizzle(pool);
 
     try {
+      // Validate team exists
+      const team = await findTeamById(db, teamId);
+      if (!team) {
+        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Unknown teamId' } });
+      }
+
       const normalizedEpicId = epicId ?? null;
       const result = await createTicket(db, pool, teamId, type, normalizedState, normalizedEpicId, title, body, request.user.id);
       if (result.kind === 'error') {
