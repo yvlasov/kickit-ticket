@@ -35,7 +35,7 @@ type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 export interface ApiResult {
   statusCode: number;
-  body: unknown;
+  body: any;
   headers: Record<string, string | string[]>;
   raw: SupertestResponse;
 }

@@ -1,4 +1,12 @@
 import { type FastifyInstance } from 'fastify';
+import { drizzle } from 'drizzle-orm/node-postgres';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    db: ReturnType<typeof drizzle>;
+    pool: import('pg').Pool;
+  }
+}
 
 export default async function registerHealth(app: FastifyInstance) {
   app.get('/health', async () => {

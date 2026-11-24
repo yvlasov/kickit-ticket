@@ -1,10 +1,18 @@
 import { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { createTicketSchema, editTicketSchema, addCommentSchema, boardFiltersSchema } from '@kickit/shared';
 import { requireSession } from '../plugins/session.ts';
 import { tickets } from '../db/schema.ts';
 import { listTickets, createTicket, getTicket, editTicket, deleteTicket, addComment } from '../services/ticket.ts';
 import { findTeamById } from '../services/epic.ts';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    db: ReturnType<typeof drizzle>;
+    pool: import('pg').Pool;
+  }
+}
 
 function getDb(request: FastifyRequest) {
   return request.server.db;

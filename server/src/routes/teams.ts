@@ -1,9 +1,17 @@
 import { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { createTeamSchema, renameTeamSchema } from '@kickit/shared';
 import { requireSession } from '../plugins/session.ts';
 import { users, teams } from '../db/schema.ts';
 import { listTeams, createTeam, renameTeam, checkDeleteTeam } from '../services/team.ts';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    db: ReturnType<typeof drizzle>;
+    pool: import('pg').Pool;
+  }
+}
 
 function getDb(request: FastifyRequest) {
   return request.server.db;

@@ -1,10 +1,18 @@
 import { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { signupSchema, verifySchema, resendSchema, loginSchema } from '@kickit/shared';
 import { signup, verifyToken, resendVerification, verifyPassword } from '../services/auth.ts';
 import { createSession, deleteSession } from '../services/session.ts';
 import { requireSession } from '../plugins/session.ts';
 import { users, sessions } from '../db/schema.ts';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    db: ReturnType<typeof drizzle>;
+    pool: import('pg').Pool;
+  }
+}
 
 function getDb(request: FastifyRequest) {
   return request.server.db;
