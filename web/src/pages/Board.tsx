@@ -10,9 +10,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import { useDraggable } from '@dnd-kit/core';
 import { useDroppable } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
 import { apiFetch, handleUnauthorized } from '../api';
 import {
   groupTicketsByState,
@@ -23,56 +21,11 @@ import {
 import { ticketQueryKey, type BoardFilters } from '../utils/queryKeys';
 import FilterBar from '../components/FilterBar';
 import Toast from '../components/Toast';
+import { BoardCard, CardSkeleton } from '../components/BoardCard';
+import { SkeletonColumn } from '../components/BoardColumn';
+import { useTeams } from '../hooks/useTeams';
+import { useTeamEpics } from '../hooks/useTeamEpics';
 import { useUpdateTicketState } from '../hooks/useUpdateTicketState';
-
-interface TeamRow {
-  id: string;
-  name: string;
-}
-
-interface EpicOption {
-  id: string;
-  title: string;
-}
-
-function useTeams() {
-  return useQuery({
-    queryKey: ['teams'],
-    queryFn: async () => {
-      const res = await apiFetch('/api/teams', { method: 'GET' });
-      if (res.status === 401) {
-        handleUnauthorized();
-        throw new Error('Unauthorized');
-      }
-      if (!res.ok) {
-        throw new Error('Failed to fetch teams');
-      }
-      return res.json() as Promise<Array<TeamRow>>;
-    },
-    retry: false,
-  });
-}
-
-function useTeamEpics(teamId: string) {
-  return useQuery({
-    queryKey: ['team-epics', teamId],
-    queryFn: async () => {
-      const res = await apiFetch(`/api/epics?teamId=${teamId}`, {
-        method: 'GET',
-      });
-      if (res.status === 401) {
-        handleUnauthorized();
-        throw new Error('Unauthorized');
-      }
-      if (!res.ok) {
-        throw new Error('Failed to fetch epics');
-      }
-      return res.json() as Promise<Array<EpicOption>>;
-    },
-    enabled: !!teamId,
-    retry: false,
-  });
-}
 
 function buildQuery(filters: BoardFilters): string {
   const parts: Array<string> = [];
@@ -82,104 +35,15 @@ function buildQuery(filters: BoardFilters): string {
   return parts.join('&');
 }
 
-function typeBadge(type: string): string {
-  const colors: Record<string, string> = {
-    bug: 'bg-red-100 text-red-800',
-    feature: 'bg-green-100 text-green-800',
-    fix: 'bg-blue-100 text-blue-800',
-  };
-  return colors[type] || 'bg-gray-100 text-gray-800';
-}
-
-function SkeletonColumn(): JSX.Element {
-  return (
-    <div className="bg-gray-100 rounded-lg p-3 flex-1 min-w-0">
-      <div className="h-5 bg-gray-300 rounded w-32 mb-3 animate-pulse" />
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="bg-white rounded p-3 mb-2 animate-pulse">
-          <div className="h-4 bg-gray-300 rounded w-3/4 mb-2" />
-          <div className="h-3 bg-gray-200 rounded w-1/2" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CardSkeleton(): JSX.Element {
-  return (
-    <div className="bg-white rounded p-3 mb-2 animate-pulse">
-      <div className="h-4 bg-gray-300 rounded w-3/4 mb-2" />
-      <div className="h-3 bg-gray-200 rounded w-1/2" />
-    </div>
-  );
-}
-
-function DraggableCard({
-  ticket,
-  justDraggedRef,
-}: {
-  ticket: TicketRow;
-  justDraggedRef: React.MutableRefObject<boolean>;
-}): JSX.Element {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: ticket.id });
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.5 : 1,
-    touchAction: 'none',
-  };
-
-  // Document-level click capture to prevent anchor navigation after drag
-  useEffect(() => {
-    const clickHandler = (e: MouseEvent) => {
-      if (justDraggedRef.current) {
-        const anchor = (e.target as HTMLElement)?.closest('a');
-        if (anchor) e.preventDefault();
-      }
-    };
-    document.addEventListener('click', clickHandler, { capture: true });
-    return () => document.removeEventListener('click', clickHandler, { capture: true });
-  }, [justDraggedRef]);
-
-  return (
-    <a
-      ref={setNodeRef}
-      style={style}
-      draggable={false}
-      {...attributes}
-      {...listeners}
-      href={`/tickets/${ticket.id}`}
-      className="block bg-white rounded p-3 shadow-sm hover:shadow-md transition-shadow"
-      onClick={(e) => { if (justDraggedRef.current) e.preventDefault(); }}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <span className="font-medium text-sm text-gray-900 truncate">
-          {ticket.title}
-        </span>
-        <span
-          className={`inline-block px-2 py-0.5 rounded text-xs font-medium ml-2 flex-shrink-0 ${typeBadge(ticket.type)}`}
-        >
-          {ticket.type}
-        </span>
-      </div>
-      {ticket.epicTitle && (
-        <p className="text-xs text-gray-500 truncate">{ticket.epicTitle}</p>
-      )}
-    </a>
-  );
-}
-
 function DroppableColumn({
   state,
   tickets,
   isLoading,
-  onStateChange,
   justDraggedRef,
 }: {
   state: string;
   tickets: Array<TicketRow>;
   isLoading: boolean;
-  onStateChange: (ticketId: string, newState: string) => void;
   justDraggedRef: React.MutableRefObject<boolean>;
 }): JSX.Element {
   const { setNodeRef, isOver } = useDroppable({ id: state });
@@ -205,7 +69,7 @@ function DroppableColumn({
       ) : (
         <div className="space-y-2 flex-1">
           {tickets.map((t) => (
-            <DraggableCard key={t.id} ticket={t} justDraggedRef={justDraggedRef} />
+            <BoardCard key={t.id} ticket={t} justDraggedRef={justDraggedRef} />
           ))}
         </div>
       )}
@@ -456,7 +320,6 @@ export default function Board() {
                   state={state}
                   tickets={grouped[state] ?? []}
                   isLoading={false}
-                  onStateChange={handleStateChange}
                   justDraggedRef={justDraggedRef}
                 />
               ))}
