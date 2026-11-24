@@ -45,30 +45,35 @@ export async function signup(
   const trimmedEmail = email.trim();
   const passwordHash = await hashPassword(password);
 
-  const newUser = await db
-    .insert(users)
-    .values({
-      email: trimmedEmail,
-      passwordHash,
-    })
-    .returning({ id: users.id })
-    .then((rows) => rows[0]);
+  const { newUser, rawToken } = await db.transaction(async (tx) => {
+    const userRow = await tx
+      .insert(users)
+      .values({
+        email: trimmedEmail,
+        passwordHash,
+      })
+      .returning({ id: users.id })
+      .then((rows) => rows[0]);
 
-  const rawToken = generateToken();
-  const tokenHash = hashToken(rawToken);
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const token = generateToken();
+    const tokenHash = hashToken(token);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  // Delete prior unused tokens for this user
-  await db
-    .delete(verificationTokens)
-    .where(and(eq(verificationTokens.userId, newUser.id), isNull(verificationTokens.usedAt)));
+    // Delete prior unused tokens for this user
+    await tx
+      .delete(verificationTokens)
+      .where(and(eq(verificationTokens.userId, userRow.id), isNull(verificationTokens.usedAt)));
 
-  await db.insert(verificationTokens).values({
-    userId: newUser.id,
-    tokenHash,
-    expiresAt,
+    await tx.insert(verificationTokens).values({
+      userId: userRow.id,
+      tokenHash,
+      expiresAt,
+    });
+
+    return { newUser: userRow, rawToken: token };
   });
 
+  // Send email AFTER transaction commit
   await sendVerificationEmail(trimmedEmail, rawToken);
 
   return { userId: newUser.id, rawToken };
