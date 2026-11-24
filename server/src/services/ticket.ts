@@ -230,9 +230,9 @@ export async function editTicket(
 
   if (!current) return null;
 
-  // Normalize: treat undefined as "not provided" for diffing
-  const normalizedTitle = newTitle !== undefined ? newTitle : undefined;
-  const normalizedBody = newBody !== undefined ? newBody : undefined;
+  // Normalize: treat undefined as "not provided" for diffing; trim title/body in service per spec
+  const normalizedTitle = newTitle !== undefined ? newTitle.trim() : undefined;
+  const normalizedBody = newBody !== undefined ? (newBody === null ? null : newBody.trim()) : undefined;
   const normalizedEpicId = newEpicId !== undefined ? newEpicId : undefined;
   const normalizedTeamId = newTeamId !== undefined ? newTeamId : undefined;
 
@@ -241,7 +241,7 @@ export async function editTicket(
   const isTeamSame = normalizedTeamId === undefined || current.teamId === normalizedTeamId;
   const isEpicSame = normalizedEpicId === undefined || current.epicId === normalizedEpicId;
   const isTitleSame = normalizedTitle === undefined || current.title === normalizedTitle;
-  const isBodySame = normalizedBody === undefined || current.body === normalizedBody;
+  const isBodySame = normalizedBody === undefined || normalizedBody === null || current.body === normalizedBody;
   const isStateSame = newState === undefined || current.state === newState;
 
   if (isTypeSame && isTeamSame && isEpicSame && isTitleSame && isBodySame && isStateSame) {
@@ -275,7 +275,7 @@ export async function editTicket(
   if (normalizedTeamId !== undefined) updateSet.teamId = normalizedTeamId;
   if (normalizedEpicId !== undefined) updateSet.epicId = normalizedEpicId;
   if (normalizedTitle !== undefined) updateSet.title = normalizedTitle;
-  if (normalizedBody !== undefined) updateSet.body = normalizedBody;
+  if (normalizedBody !== undefined && normalizedBody !== null) updateSet.body = normalizedBody;
   if (newState !== undefined) updateSet.state = newState;
   updateSet.modifiedAt = new Date();
 
