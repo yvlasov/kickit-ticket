@@ -204,4 +204,39 @@ describe('Auth API — Login, Logout, Me', () => {
     const res = await apiRequest(app, 'POST', '/api/auth/logout');
     expect(res.statusCode).toBe(204);
   });
+
+  // Test 7b: login cleans up expired session rows for other users
+  it('POST /api/auth/login deletes expired session rows opportunistically', async () => {
+    // Create two users
+    await signupAndVerify(app, pool, 'cleanup-user1@example.com', 'password123');
+    await signupAndVerify(app, pool, 'cleanup-user2@example.com', 'password123');
+
+    // Create an expired session for user1
+    const login1 = await apiRequest(app, 'POST', '/api/auth/login', {
+      email: 'cleanup-user1@example.com',
+      password: 'password123',
+    });
+    const cookie1 = login1.headers['set-cookie']?.[0] ?? '';
+    const sessionId1 = cookie1.split(';')[0].split('=')[1];
+
+    await pool.query(
+      'UPDATE sessions SET expires_at = now() - interval \'1 hour\' WHERE id = $1',
+      [sessionId1],
+    );
+
+    // Verify expired session exists
+    const before = await pool.query('SELECT id FROM sessions WHERE expires_at < now()');
+    expect(before.rows.length).toBeGreaterThanOrEqual(1);
+
+    // Login as user2 — should clean up expired sessions
+    const login2 = await apiRequest(app, 'POST', '/api/auth/login', {
+      email: 'cleanup-user2@example.com',
+      password: 'password123',
+    });
+    expect(login2.statusCode).toBe(200);
+
+    // Expired session for user1 should be gone
+    const after = await pool.query('SELECT id FROM sessions WHERE expires_at < now()');
+    expect(after.rows.length).toBe(0);
+  });
 });

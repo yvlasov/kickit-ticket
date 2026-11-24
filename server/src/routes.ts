@@ -1,12 +1,12 @@
 import { type FastifyInstance } from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { signupSchema, verifySchema, resendSchema, loginSchema, createTeamSchema, renameTeamSchema, createEpicSchema, editEpicSchema, createTicketSchema, editTicketSchema, addCommentSchema, boardFiltersSchema } from '@kickit/shared';
 import { signup, verifyToken, resendVerification, verifyPassword } from './services/auth.ts';
 import { createSession, deleteSession } from './services/session.ts';
 import { requireSession } from './plugins/session.ts';
-import { users, teams, epics, tickets } from './db/schema.ts';
+import { users, teams, epics, tickets, sessions } from './db/schema.ts';
 import { listTeams, createTeam, renameTeam, checkDeleteTeam } from './services/team.ts';
 import { listEpics, createEpic, editEpic, checkDeleteEpic, findTeamById, listTeams as listEpicTeams } from './services/epic.ts';
 import { listTickets, createTicket, getTicket, editTicket, deleteTicket, addComment } from './services/ticket.ts';
@@ -147,6 +147,9 @@ export default async function routes(app: FastifyInstance) {
       }
 
       const session = await createSession(db, userRow.id);
+
+      // Opportunistic cleanup: delete expired session rows for all users
+      await db.delete(sessions).where(sql`expires_at < now()`);
 
       const isHttps = (process.env.PUBLIC_BASE_URL || '').startsWith('https://');
 
