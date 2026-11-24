@@ -576,23 +576,12 @@ export default async function routes(app: FastifyInstance) {
     const db = drizzle(pool);
 
     try {
-      // Validate team exists
-      const team = await findTeamById(db, teamId);
-      if (!team) {
-        return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Unknown teamId' } });
-      }
-
-      // Validate epic if present must belong to team
-      if (epicId !== null && epicId !== undefined) {
-        const epicTeam = await db.select({ teamId: epics.teamId }).from(epics).where(eq(epics.id, epicId)).limit(1).then((r) => r[0]);
-        if (!epicTeam || epicTeam.teamId !== teamId) {
-          return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Epic does not belong to the specified team' } });
-        }
-      }
-
       const normalizedEpicId = epicId ?? null;
-      const ticket = await createTicket(db, pool, teamId, type, normalizedState, normalizedEpicId, title, body, request.user.id);
-      return reply.code(201).send(ticket);
+      const result = await createTicket(db, pool, teamId, type, normalizedState, normalizedEpicId, title, body, request.user.id);
+      if (result.kind === 'error') {
+        return reply.code(400).send({ error: { code: result.code, message: result.message } });
+      }
+      return reply.code(201).send(result.ticket);
     } finally {
       await pool.end();
     }
@@ -688,21 +677,6 @@ export default async function routes(app: FastifyInstance) {
     const db = drizzle(pool);
 
     try {
-      // Verify ticket exists
-      const existing = await db.select({ id: tickets.id, teamId: tickets.teamId }).from(tickets).where(eq(tickets.id, ticketId)).limit(1).then((r) => r[0]);
-      if (!existing) {
-        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Ticket not found' } });
-      }
-
-      // Validate epic if present: must belong to the (new or current) team
-      if (newEpicId !== null && newEpicId !== undefined) {
-        const targetTeamId = newTeamId ?? existing.teamId;
-        const epicTeam = await db.select({ teamId: epics.teamId }).from(epics).where(eq(epics.id, newEpicId)).limit(1).then((r) => r[0]);
-        if (!epicTeam || epicTeam.teamId !== targetTeamId) {
-          return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Epic does not belong to the specified team' } });
-        }
-      }
-
       // Validate new team exists if provided
       if (newTeamId !== undefined) {
         const newTeam = await findTeamById(db, newTeamId);
@@ -711,16 +685,17 @@ export default async function routes(app: FastifyInstance) {
         }
       }
 
-      // Team change rules: if team changes and epicId not supplied, auto-null epic
-      const effectiveEpicId = (newTeamId !== undefined && newTeamId !== existing.teamId && newEpicId === undefined) ? null : newEpicId;
+      const result = await editTicket(db, pool, ticketId, newType, newTeamId, newEpicId, newTitle, newBody, newState);
 
-      const result = await editTicket(db, pool, ticketId, newType, newTeamId, effectiveEpicId, newTitle, newBody, newState);
+      if (result.kind === 'error') {
+        return reply.code(400).send({ error: { code: result.code, message: result.message } });
+      }
 
-      if (result === null) {
+      if (result.kind === 'ok' && result.ticket === null) {
         return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Ticket not found' } });
       }
 
-      return reply.code(200).send(result);
+      return reply.code(200).send(result.ticket);
     } finally {
       await pool.end();
     }

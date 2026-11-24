@@ -19,6 +19,14 @@ export interface TicketRow {
   teamName: string;
 }
 
+export type EditTicketResult =
+  | { kind: 'ok'; ticket: TicketRow }
+  | { kind: 'error'; code: string; message: string };
+
+export type CreateTicketResult =
+  | { kind: 'ok'; ticket: TicketRow }
+  | { kind: 'error'; code: string; message: string };
+
 export interface CommentRow {
   id: string;
   ticketId: string;
@@ -99,7 +107,20 @@ export async function createTicket(
   title: string,
   body: string | null,
   createdBy: string,
-): Promise<TicketRow> {
+): Promise<CreateTicketResult> {
+  // Epic-team validation: if epic is supplied, it must belong to the team
+  if (epicId !== null && epicId !== undefined) {
+    const epicTeam = await db
+      .select({ teamId: epics.teamId })
+      .from(epics)
+      .where(eq(epics.id, epicId))
+      .limit(1)
+      .then((r) => r[0]);
+    if (!epicTeam || epicTeam.teamId !== teamId) {
+      return { kind: 'error', code: 'VALIDATION_ERROR', message: 'Epic does not belong to the specified team' };
+    }
+  }
+
   const row = await db
     .insert(tickets)
     .values({ teamId, type, state, epicId, title, body, createdBy } as typeof tickets.$inferInsert)
@@ -124,19 +145,22 @@ export async function createTicket(
   ]);
 
   return {
-    id: row.id,
-    teamId: row.teamId,
-    type: row.type,
-    state: row.state,
-    epicId: row.epicId,
-    epicTitle: epicRow?.title ?? null,
-    title: row.title,
-    body: row.body,
-    createdBy: row.createdBy,
-    createdByEmail: userRow?.email ?? '',
-    createdAt: row.createdAt,
-    modifiedAt: row.modifiedAt,
-    teamName: teamRow?.name ?? '',
+    kind: 'ok',
+    ticket: {
+      id: row.id,
+      teamId: row.teamId,
+      type: row.type,
+      state: row.state,
+      epicId: row.epicId,
+      epicTitle: epicRow?.title ?? null,
+      title: row.title,
+      body: row.body,
+      createdBy: row.createdBy,
+      createdByEmail: userRow?.email ?? '',
+      createdAt: row.createdAt,
+      modifiedAt: row.modifiedAt,
+      teamName: teamRow?.name ?? '',
+    },
   };
 }
 
@@ -209,7 +233,7 @@ export async function editTicket(
   newTitle: string | undefined,
   newBody: string | null | undefined,
   newState: 'new' | 'ready_for_implementation' | 'in_progress' | 'ready_for_acceptance' | 'done' | undefined,
-): Promise<TicketRow | null> {
+): Promise<EditTicketResult> {
   const current = await db
     .select({
       id: tickets.id,
@@ -228,12 +252,34 @@ export async function editTicket(
     .limit(1)
     .then((rows) => rows[0]);
 
-  if (!current) return null;
+  if (!current) return { kind: 'error', code: 'NOT_FOUND', message: 'Ticket not found' };
+
+  // Determine target team for epic validation
+  const targetTeamId = newTeamId ?? current.teamId;
+
+  // Team-change epic auto-null: if team changes and epicId not supplied, null it
+  const effectiveEpicId =
+    (newTeamId !== undefined && newTeamId !== current.teamId && newEpicId === undefined)
+      ? null
+      : newEpicId;
+
+  // Epic-team validation: if epic is supplied (after auto-null), it must belong to target team
+  if (effectiveEpicId !== undefined && effectiveEpicId !== null) {
+    const epicTeam = await db
+      .select({ teamId: epics.teamId })
+      .from(epics)
+      .where(eq(epics.id, effectiveEpicId))
+      .limit(1)
+      .then((r) => r[0]);
+    if (!epicTeam || epicTeam.teamId !== targetTeamId) {
+      return { kind: 'error', code: 'VALIDATION_ERROR', message: 'Epic does not belong to the specified team' };
+    }
+  }
 
   // Normalize: treat undefined as "not provided" for diffing; trim title/body in service per spec
   const normalizedTitle = newTitle !== undefined ? newTitle.trim() : undefined;
   const normalizedBody = newBody !== undefined ? (newBody === null ? null : newBody.trim()) : undefined;
-  const normalizedEpicId = newEpicId !== undefined ? newEpicId : undefined;
+  const normalizedEpicId = effectiveEpicId !== undefined ? effectiveEpicId : undefined;
   const normalizedTeamId = newTeamId !== undefined ? newTeamId : undefined;
 
   // No-op diff: exact equality after normalization
@@ -253,19 +299,22 @@ export async function editTicket(
     ]);
 
     return {
-      id: current.id,
-      teamId: current.teamId,
-      type: current.type,
-      state: current.state,
-      epicId: current.epicId,
-      epicTitle: epicRow?.title ?? null,
-      title: current.title,
-      body: current.body,
-      createdBy: current.createdBy,
-      createdByEmail: userRow?.email ?? '',
-      createdAt: current.createdAt,
-      modifiedAt: current.modifiedAt,
-      teamName: teamRow?.name ?? '',
+      kind: 'ok',
+      ticket: {
+        id: current.id,
+        teamId: current.teamId,
+        type: current.type,
+        state: current.state,
+        epicId: current.epicId,
+        epicTitle: epicRow?.title ?? null,
+        title: current.title,
+        body: current.body,
+        createdBy: current.createdBy,
+        createdByEmail: userRow?.email ?? '',
+        createdAt: current.createdAt,
+        modifiedAt: current.modifiedAt,
+        teamName: teamRow?.name ?? '',
+      },
     };
   }
 
@@ -304,19 +353,22 @@ export async function editTicket(
   ]);
 
   return {
-    id: row.id,
-    teamId: row.teamId,
-    type: row.type,
-    state: row.state,
-    epicId: row.epicId,
-    epicTitle: epicRow?.title ?? null,
-    title: row.title,
-    body: row.body,
-    createdBy: row.createdBy,
-    createdByEmail: userRow?.email ?? '',
-    createdAt: row.createdAt,
-    modifiedAt: row.modifiedAt,
-    teamName: teamRow?.name ?? '',
+    kind: 'ok',
+    ticket: {
+      id: row.id,
+      teamId: row.teamId,
+      type: row.type,
+      state: row.state,
+      epicId: row.epicId,
+      epicTitle: epicRow?.title ?? null,
+      title: row.title,
+      body: row.body,
+      createdBy: row.createdBy,
+      createdByEmail: userRow?.email ?? '',
+      createdAt: row.createdAt,
+      modifiedAt: row.modifiedAt,
+      teamName: teamRow?.name ?? '',
+    },
   };
 }
 
