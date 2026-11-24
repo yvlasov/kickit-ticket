@@ -2,6 +2,8 @@
 
 A hackathon-grade Kanban ticket tracker: a single-page React frontend, a Fastify HTTP API, and PostgreSQL persistence. Teams contain epics; epics group tickets; tickets move through a five-column Kanban board via drag-and-drop. Users register with email + password, verify via a confirmation email sent through SMTP, and authenticate with cookie-based sessions.
 
+> **Manual testing?** See the [Manual Testing Guide](e2e/manual-testing-guide.md) — seeded test accounts, registration **without an external SMTP server** (via the bundled Mailpit), and the stop-backend-and-drag check.
+
 ## Stack
 
 | Tier | Technology |
