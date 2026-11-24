@@ -80,7 +80,7 @@ export const tickets = pgTable(
       .default('new'),
     epicId: uuid('epic_id').references(() => epics.id, { onDelete: 'restrict' }),
     title: text('title').notNull(),
-    body: text('body'),
+    body: text('body').notNull(),
     createdBy: uuid('created_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     modifiedAt: timestamp('modified_at', { withTimezone: true }).notNull().defaultNow(),
